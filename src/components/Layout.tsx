@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { MHSLogo } from '@/components/MHSLogo';
@@ -119,6 +119,21 @@ export function Layout({ children }: LayoutProps) {
   const { profile } = useAuth();
   const location = useLocation();
 
+  /* Track which group nav items are open (keyed by `to` path).
+     Default: open if the current path already matches the group. */
+  const defaultOpen = (to: string) => location.pathname.startsWith(to);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const item of Object.values(menuByRole).flat()) {
+      if ('children' in item) init[item.to] = defaultOpen(item.to);
+    }
+    return init;
+  });
+
+  function toggleGroup(to: string) {
+    setOpenGroups((prev) => ({ ...prev, [to]: !prev[to] }));
+  }
+
   if (!profile) return null;
 
   const menu = menuByRole[profile.role];
@@ -151,43 +166,54 @@ export function Layout({ children }: LayoutProps) {
             /* ── Group item (e.g. Settings with sub-menu) ── */
             if (item.kind === 'group') {
               const isGroupActive = location.pathname.startsWith(item.to);
+              const isOpen = openGroups[item.to] ?? isGroupActive;
               return (
                 <div key={item.to}>
-                  {/* Parent header — not a link, acts as label */}
-                  <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium select-none ${
-                    isGroupActive ? 'text-violet-700' : 'text-gray-600'
-                  }`}>
+                  {/* Parent header — clickable toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(item.to)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                      isGroupActive
+                        ? 'text-violet-700 bg-violet-50/60'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                  >
                     <span className={isGroupActive ? 'text-violet-600' : 'text-gray-400'}>
                       {navIcons[item.to]}
                     </span>
                     {item.label}
                     <svg
-                      className={`ml-auto w-3.5 h-3.5 transition-transform ${isGroupActive ? 'rotate-180 text-violet-500' : 'text-gray-300'}`}
+                      className={`ml-auto w-3.5 h-3.5 transition-transform duration-200 ${
+                        isOpen ? 'rotate-180' : ''
+                      } ${isGroupActive ? 'text-violet-500' : 'text-gray-300'}`}
                       fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
                     >
                       <path strokeLinecap="round" d="M19 9l-7 7-7-7"/>
                     </svg>
-                  </div>
-                  {/* Sub-items — always visible, indented */}
-                  <div className="ml-4 pl-3 border-l border-gray-100 mt-0.5 space-y-0.5">
-                    {item.children.map(({ to: childTo, label: childLabel }) => {
-                      const isChildActive = location.pathname === childTo;
-                      return (
-                        <Link
-                          key={childTo}
-                          to={childTo}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                            isChildActive
-                              ? 'bg-violet-50 text-violet-700 shadow-sm'
-                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isChildActive ? 'bg-violet-500' : 'bg-gray-300'}`} />
-                          {childLabel}
-                        </Link>
-                      );
-                    })}
-                  </div>
+                  </button>
+                  {/* Sub-items — collapsible */}
+                  {isOpen && (
+                    <div className="ml-4 pl-3 border-l border-gray-100 mt-0.5 space-y-0.5">
+                      {item.children.map(({ to: childTo, label: childLabel }) => {
+                        const isChildActive = location.pathname === childTo;
+                        return (
+                          <Link
+                            key={childTo}
+                            to={childTo}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                              isChildActive
+                                ? 'bg-violet-50 text-violet-700 shadow-sm'
+                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isChildActive ? 'bg-violet-500' : 'bg-gray-300'}`} />
+                            {childLabel}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             }
