@@ -93,9 +93,9 @@ export function Settings() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Settings</h1>
           <p className="text-sm text-gray-500 mt-0.5">Master Nutrition Parameter Library</p>
         </div>
         {!showForm && (
@@ -120,7 +120,7 @@ export function Settings() {
             </button>
           </div>
           <div className="card-body">
-            <div className="grid grid-cols-2 gap-4 max-w-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
               <div>
                 <label className="label">Name</label>
                 <input className="input" value={form.name}

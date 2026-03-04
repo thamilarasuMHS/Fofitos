@@ -177,8 +177,9 @@ export function Categories() {
         )}
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 border-b border-gray-200 mb-5">
+      {/* Filter tabs — horizontally scrollable on mobile */}
+      <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+      <div className="flex gap-1 border-b border-gray-200 mb-5 min-w-max md:min-w-0">
         {TABS.filter((t) => t.id === 'all' || t.count > 0).map((t) => (
           <button
             key={t.id}
@@ -198,6 +199,7 @@ export function Categories() {
             </span>
           </button>
         ))}
+      </div>
       </div>
 
       {/* Empty state */}
