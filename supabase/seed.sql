@@ -1,0 +1,3 @@
+-- Optional seed data for local development.
+-- Nutrition parameters are seeded in migration 00002_nutrition_parameters.sql.
+-- First admin: sign up via the app, then set role to 'admin' in Supabase Studio (profiles table).

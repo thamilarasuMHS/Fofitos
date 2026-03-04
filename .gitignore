@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.claude/
+.cursor/
+
+# Dev logs
+dev.log
+nul
+
+# Vite / TypeScript cache
+*.tsbuildinfo
+.vite/
+
+# Supabase local
+supabase/.temp/
