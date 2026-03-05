@@ -226,12 +226,13 @@ export function Categories() {
         <>
           {/* Table */}
           <div className="table-wrap overflow-x-auto">
-            <table className="w-full min-w-[750px]">
+            <table className="w-full min-w-[880px]">
               <thead>
                 <tr>
                   <th className="th">Name</th>
                   <th className="th">Status</th>
                   <th className="th">Created By</th>
+                  <th className="th">Approved By</th>
                   <th className="th">Created On</th>
                   <th className="th">Submitted On</th>
                   <th className="th">Approved On</th>
@@ -271,11 +272,32 @@ export function Categories() {
                         <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center text-[10px] font-bold text-violet-700 shrink-0">
                           {(creatorName(c.created_by)[0] || '?').toUpperCase()}
                         </div>
-                        <span className="text-sm text-gray-700">{creatorName(c.created_by)}</span>
-                        {creatorRole(c.created_by) && (
-                          <span className="text-xs text-gray-400 capitalize">({creatorRole(c.created_by)})</span>
-                        )}
+                        <div className="min-w-0">
+                          <span className="text-sm text-gray-700">{creatorName(c.created_by)}</span>
+                          {creatorRole(c.created_by) && (
+                            <span className="text-xs text-gray-400 capitalize ml-1">({creatorRole(c.created_by)})</span>
+                          )}
+                        </div>
                       </div>
+                    </td>
+
+                    {/* Approved By */}
+                    <td className="td">
+                      {c.approved_by ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] font-bold text-emerald-700 shrink-0">
+                            {(creatorName(c.approved_by)[0] || '?').toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-sm text-gray-700">{creatorName(c.approved_by)}</span>
+                            {creatorRole(c.approved_by) && (
+                              <span className="text-xs text-gray-400 capitalize ml-1">({creatorRole(c.approved_by)})</span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-300">—</span>
+                      )}
                     </td>
 
                     <td className="td text-gray-600 text-sm">{fmtDate(c.created_at)}</td>
