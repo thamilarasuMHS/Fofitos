@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -1018,6 +1018,25 @@ function ComponentIngredientCard({
       added_sugar_g: (ing.added_sugar_g * scale).toFixed(2),
     });
   }
+
+  /* ── Auto-bind on exact name match (no click needed) ── */
+  useEffect(() => {
+    if (!dbIngredients || selectedIng) return;
+    const match = dbIngredients.find(
+      (ing) => ing.name.toLowerCase() === search.trim().toLowerCase()
+    );
+    if (match) selectIngredient(match);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbIngredients]);
+
+  useEffect(() => {
+    if (!dbSauces || selectedSauce) return;
+    const match = dbSauces.find(
+      (sauce) => sauce.name.toLowerCase() === search.trim().toLowerCase()
+    );
+    if (match) void selectSauce(match);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbSauces]);
 
   function handleQuantityChange(val: string) {
     setQuantity(val);
