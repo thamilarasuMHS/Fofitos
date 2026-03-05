@@ -869,11 +869,11 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
   sauceId: string; onClose: () => void; onSuccess: () => void;
 }) {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
 
-  const [name, setName]               = useState('');
-  const [nutrForm, setNutrForm]       = useState<Record<NutrKey, string>>({ ...EMPTY_NUTR });
-  const [initialized, setInitialized] = useState(false);
-  const [submitted, setSubmitted]     = useState(false);
+  const [name, setName]           = useState('');
+  const [nutrForm, setNutrForm]   = useState<Record<NutrKey, string>>({ ...EMPTY_NUTR });
+  const [submitted, setSubmitted] = useState(false);
 
   const { data: sauceDetail, isLoading } = useQuery({
     queryKey: ['sauce_edit_detail', sauceId],
@@ -887,28 +887,28 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
       return { sauce, ing: ings?.[0] ?? null };
     },
     staleTime: 0,
+    gcTime: 0,   // never keep stale data in cache
   });
 
+  // Always sync form when fresh data arrives — keyed on sauceId so switching
+  // sauces always re-initialises even if component stays mounted.
   useEffect(() => {
-    if (sauceDetail && !initialized) {
-      setName(sauceDetail.sauce.name ?? '');
-      if (sauceDetail.ing) {
-        const ing = sauceDetail.ing as Record<string, unknown>;
-        setNutrForm({
-          calories:      String(ing.calories      ?? ''),
-          protein_g:     String(ing.protein_g     ?? ''),
-          carbs_g:       String(ing.carbs_g       ?? ''),
-          fat_g:         String(ing.fat_g         ?? ''),
-          fibre_g:       String(ing.fibre_g       ?? ''),
-          omega3_g:      String(ing.omega3_g      ?? ''),
-          omega6_g:      String(ing.omega6_g      ?? ''),
-          sodium_mg:     String(ing.sodium_mg     ?? ''),
-          added_sugar_g: String(ing.added_sugar_g ?? ''),
-        });
-      }
-      setInitialized(true);
-    }
-  }, [sauceDetail, initialized]);
+    if (!sauceDetail) return;
+    setName(sauceDetail.sauce.name ?? '');
+    const ing = sauceDetail.ing as Record<string, unknown> | null;
+    setNutrForm({
+      calories:      String(ing?.calories      ?? ''),
+      protein_g:     String(ing?.protein_g     ?? ''),
+      carbs_g:       String(ing?.carbs_g       ?? ''),
+      fat_g:         String(ing?.fat_g         ?? ''),
+      fibre_g:       String(ing?.fibre_g       ?? ''),
+      omega3_g:      String(ing?.omega3_g      ?? ''),
+      omega6_g:      String(ing?.omega6_g      ?? ''),
+      sodium_mg:     String(ing?.sodium_mg     ?? ''),
+      added_sugar_g: String(ing?.added_sugar_g ?? ''),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sauceId, sauceDetail]);
 
   const nameErr = submitted && !name.trim();
   const nutrErrors = NUTR_FIELDS.reduce<Record<NutrKey, boolean>>(
@@ -952,7 +952,11 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
         sort_order:    0,
       });
     },
-    onSuccess: () => onSuccess(),
+    onSuccess: () => {
+      // Evict stale detail so re-opening always fetches fresh values
+      queryClient.removeQueries({ queryKey: ['sauce_edit_detail', sauceId] });
+      onSuccess();
+    },
   });
 
   if (isLoading) {
