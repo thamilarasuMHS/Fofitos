@@ -717,21 +717,159 @@ export function RecipeDetail() {
       {/* ── Score History tab ───────────────────────────────────────────────── */}
       {activeTab === 'history' && (
         <div className="mt-4 space-y-4">
-          {scoreSnapshots?.length === 0 && <p className="text-gray-500">No score history yet.</p>}
-          {scoreSnapshots?.map((s) => (
-            <div key={s.id} className="p-4 border border-gray-200 rounded">
-              <div className="flex justify-between text-sm text-gray-600 mb-2">
-                <span>{new Date(s.created_at).toLocaleString()}</span>
-                <span>{s.triggered_by === 'recipe_save' ? 'Recipe save' : 'Goal update'}</span>
+
+          {/* Empty state */}
+          {scoreSnapshots?.length === 0 && (
+            <div className="card flex flex-col items-center justify-center py-16 px-6 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-violet-50 flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-violet-300" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
               </div>
-              <p className="font-medium">Overall: {s.overall_score.toFixed(1)}</p>
-              <ul className="text-sm mt-1">
-                {Object.entries(s.parameter_scores).map(([paramId, score]) => (
-                  <li key={paramId}>Score {score.toFixed(0)}</li>
-                ))}
-              </ul>
+              <p className="font-semibold text-gray-700">No score history yet</p>
+              <p className="text-sm text-gray-400 mt-1 max-w-xs">
+                Score snapshots are recorded each time this recipe version is submitted for approval.
+              </p>
             </div>
-          ))}
+          )}
+
+          {scoreSnapshots?.map((s) => {
+            const overall   = s.overall_score;
+            /* ── colour helpers based on score ── */
+            const scoreAccent = overall >= 90 ? 'bg-emerald-400'
+                              : overall >= 70 ? 'bg-amber-400'
+                              :                 'bg-red-400';
+            const scoreText   = overall >= 90 ? 'text-emerald-600'
+                              : overall >= 70 ? 'text-amber-500'
+                              :                 'text-red-500';
+            const scoreBg     = overall >= 90 ? 'bg-emerald-50 ring-emerald-200'
+                              : overall >= 70 ? 'bg-amber-50  ring-amber-200'
+                              :                 'bg-red-50    ring-red-200';
+            const scoreBar    = overall >= 90 ? 'bg-emerald-500'
+                              : overall >= 70 ? 'bg-amber-400'
+                              :                 'bg-red-400';
+
+            const fmtDate = new Date(s.created_at).toLocaleDateString('en-GB', {
+              day: 'numeric', month: 'short', year: 'numeric',
+            });
+            const fmtTime = new Date(s.created_at).toLocaleTimeString('en-GB', {
+              hour: '2-digit', minute: '2-digit',
+            });
+            const isRecipeSave = s.triggered_by === 'recipe_save';
+            const paramEntries = Object.entries(s.parameter_scores);
+
+            return (
+              <div key={s.id} className="card overflow-hidden">
+
+                {/* Top accent stripe */}
+                <div className={`h-1 w-full ${scoreAccent}`} />
+
+                {/* Card header — date + trigger badge */}
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2.5">
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <span className="text-sm font-semibold text-gray-700">{fmtDate}</span>
+                    <span className="text-xs text-gray-400">{fmtTime}</span>
+                  </div>
+                  <span className={`badge text-[11px] font-semibold ${
+                    isRecipeSave
+                      ? 'bg-violet-50 text-violet-700'
+                      : 'bg-amber-50  text-amber-700'
+                  }`}>
+                    {isRecipeSave
+                      ? <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                          Recipe Save
+                        </span>
+                      : <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                          Goal Update
+                        </span>
+                    }
+                  </span>
+                </div>
+
+                {/* Card body — overall score + parameter breakdown */}
+                <div className="p-5 flex flex-col sm:flex-row gap-5">
+
+                  {/* ── Overall score panel ──────────────────────── */}
+                  <div className={`flex flex-col items-center justify-center rounded-2xl ring-2 px-6 py-5 shrink-0 sm:w-36 ${scoreBg}`}>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Overall</p>
+                    <p className={`text-5xl font-extrabold tabular-nums leading-none ${scoreText}`}>
+                      {overall.toFixed(0)}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5 font-medium">/ 100</p>
+                    {/* Mini progress bar */}
+                    <div className="mt-3 w-full bg-white/60 rounded-full h-2 overflow-hidden">
+                      <div className={`h-full rounded-full ${scoreBar}`} style={{ width: `${overall}%` }} />
+                    </div>
+                    <p className={`text-[11px] font-semibold mt-2 ${scoreText}`}>
+                      {overall >= 90 ? '🏆 Excellent' : overall >= 70 ? '👍 Good' : '⚠️ Needs work'}
+                    </p>
+                  </div>
+
+                  {/* ── Parameter breakdown ──────────────────────── */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
+                      Parameter Breakdown
+                    </p>
+                    <div className="space-y-3">
+                      {paramEntries.map(([paramId, paramScore]) => {
+                        const param     = parameters?.find((p) => p.id === paramId);
+                        const paramName = param?.name ?? paramId;
+                        const goal      = s.goal_snapshot?.[paramName];
+                        const ps = paramScore as number;
+
+                        const pBarColor  = ps >= 90 ? 'bg-emerald-500'
+                                         : ps >= 70 ? 'bg-amber-400'
+                                         :            'bg-red-400';
+                        const pTextColor = ps >= 90 ? 'text-emerald-700'
+                                         : ps >= 70 ? 'text-amber-600'
+                                         :            'text-red-600';
+                        const pBadge     = ps >= 90 ? 'bg-emerald-50 text-emerald-700'
+                                         : ps >= 70 ? 'bg-amber-50  text-amber-600'
+                                         :            'bg-red-50    text-red-600';
+
+                        return (
+                          <div key={paramId}>
+                            {/* Label row */}
+                            <div className="flex items-center justify-between mb-1 gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm font-semibold text-gray-800 truncate">{paramName}</span>
+                                {goal && (
+                                  <span className="text-[10px] text-gray-400 shrink-0 hidden sm:inline">
+                                    Goal: {goal.min}–{goal.max} {param?.unit ?? ''}
+                                  </span>
+                                )}
+                              </div>
+                              <span className={`badge text-[11px] font-bold shrink-0 ${pBadge}`}>
+                                <span className={pTextColor}>{ps.toFixed(0)}</span>
+                              </span>
+                            </div>
+                            {/* Goal range label on mobile */}
+                            {goal && (
+                              <p className="text-[10px] text-gray-400 mb-1 sm:hidden">
+                                Goal: {goal.min}–{goal.max} {param?.unit ?? ''}
+                              </p>
+                            )}
+                            {/* Progress bar */}
+                            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${pBarColor}`}
+                                style={{ width: `${ps}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
