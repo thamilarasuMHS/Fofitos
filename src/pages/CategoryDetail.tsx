@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type {
@@ -56,12 +57,22 @@ function RecipeStatusBadge({ status }: { status: string }) {
 export function CategoryDetail() {
   const { categoryId } = useParams<{ categoryId: string }>();
   const navigate       = useNavigate();
+  const location       = useLocation();
   const queryClient    = useQueryClient();
   const { profile }    = useAuth();
 
   const [showNewRecipe,  setShowNewRecipe]  = useState(false);
   const [newRecipeName,  setNewRecipeName]  = useState('');
   const [recipeNameErr,  setRecipeNameErr]  = useState(false);
+
+  /* Auto-open the New Recipe form when arriving from CategoryNew */
+  useEffect(() => {
+    if ((location.state as { openNewRecipe?: boolean } | null)?.openNewRecipe) {
+      setShowNewRecipe(true);
+      /* Clear state so a manual refresh doesn't re-trigger it */
+      window.history.replaceState({}, '');
+    }
+  }, [location.state]);
 
   /* ── Queries ────────────────────────────────────────────────────────────── */
   const { data: category, isLoading: catLoading } = useQuery({
@@ -194,7 +205,11 @@ export function CategoryDetail() {
       queryClient.invalidateQueries({ queryKey: ['recipes', categoryId] });
       setShowNewRecipe(false);
       setNewRecipeName('');
+      toast.success('Recipe created! Start building your ingredients.');
       navigate(`/categories/${categoryId}/recipes/${recipeId}`);
+    },
+    onError: (err: Error) => {
+      toast.error('Failed to create recipe', { description: err.message });
     },
   });
 

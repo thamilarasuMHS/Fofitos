@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { Layout } from '@/components/Layout';
 import { RequireRole } from '@/components/RequireRole';
@@ -89,10 +90,20 @@ function ProtectedRoutes() {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/pending-approval" element={<PendingApproval />} />
-      <Route path="/*" element={<ProtectedRoutes />} />
-    </Routes>
+    <>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: { fontFamily: 'Inter, system-ui, sans-serif' },
+          duration: 3500,
+        }}
+        richColors
+      />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/pending-approval" element={<PendingApproval />} />
+        <Route path="/*" element={<ProtectedRoutes />} />
+      </Routes>
+    </>
   );
 }

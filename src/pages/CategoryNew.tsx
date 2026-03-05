@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { NutritionParameter, ComponentLibrary } from '@/types/database';
@@ -115,7 +116,14 @@ export function CategoryNew() {
     },
     onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
-      navigate(`/categories/${id}`);
+      toast.success('Category created! Now add your first recipe.', {
+        description: 'You\'ve been taken to the recipe builder.',
+      });
+      // Navigate to the category detail page and auto-open the New Recipe form
+      navigate(`/categories/${id}`, { state: { openNewRecipe: true } });
+    },
+    onError: (err: Error) => {
+      toast.error('Failed to create category', { description: err.message });
     },
   });
 
