@@ -172,6 +172,20 @@ export function IngredientDatabase() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ingredient_database'] }),
   });
 
+  const deleteSauce = useMutation({
+    mutationFn: async (id: string) => {
+      await supabase.from('sauce_ingredients').delete().eq('sauce_id', id);
+      const { error } = await supabase.from('sauce_library').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sauce_library'] });
+      queryClient.invalidateQueries({ queryKey: ['sauce_library_total'] });
+      toast.success('Sub Component deleted successfully.');
+    },
+    onError: (err: Error) => toast.error('Failed to delete', { description: err.message }),
+  });
+
   /* ── Permissions ──────────────────────────────────────────────────────── */
   const canEdit   = profile?.role === 'admin' || profile?.role === 'manager';
   const canDelete = profile?.role === 'admin';
@@ -399,7 +413,7 @@ export function IngredientDatabase() {
                       <th className="th">Created By</th>
                       <th className="th">Created On</th>
                       <th className="th">Updated On</th>
-                      {canEdit && <th className="th w-16" />}
+                      {(canEdit || canDelete) && <th className="th w-24" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -431,15 +445,34 @@ export function IngredientDatabase() {
                         <td className="td text-gray-600 text-sm">{fmtDate(s.updated_at)}</td>
 
                         {/* Actions */}
-                        {canEdit && (
+                        {(canEdit || canDelete) && (
                           <td className="td text-right">
-                            <button
-                              type="button"
-                              className="btn-secondary py-0.5 px-2 text-xs"
-                              onClick={() => setEditingSauceId(s.id)}
-                            >
-                              Edit
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  className="btn-secondary py-0.5 px-2 text-xs"
+                                  onClick={() => setEditingSauceId(s.id)}
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  className="btn-danger py-0.5 px-2 text-xs"
+                                  onClick={() => {
+                                    toast('Delete this sub component?', {
+                                      description: 'This cannot be undone.',
+                                      action: { label: 'Delete', onClick: () => deleteSauce.mutate(s.id) },
+                                      cancel: { label: 'Cancel', onClick: () => {} },
+                                    });
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
                       </tr>

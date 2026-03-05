@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { Category, Profile } from '@/types/database';
@@ -38,9 +39,38 @@ function StatusBadge({ status }: { status: string }) {
 export function Categories() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [page, setPage]               = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  /* ── Delete mutation ───────────────────────────────────────────────────── */
+  const deleteCategory = useMutation({
+    mutationFn: async (categoryId: string) => {
+      // Get all recipe IDs for this category
+      const { data: recipes } = await supabase
+        .from('recipes').select('id').eq('category_id', categoryId);
+      const recipeIds = (recipes ?? []).map((r: { id: string }) => r.id);
+
+      // Delete in FK-safe order
+      if (recipeIds.length > 0) {
+        await supabase.from('recipe_ingredients').delete().in('recipe_id', recipeIds);
+        await supabase.from('recipe_versions').delete().in('recipe_id', recipeIds);
+        await supabase.from('recipes').delete().eq('category_id', categoryId);
+      }
+      await supabase.from('category_goals').delete().eq('category_id', categoryId);
+      await supabase.from('category_components').delete().eq('category_id', categoryId);
+      const { error } = await supabase.from('categories').delete().eq('id', categoryId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Category deleted successfully.');
+    },
+    onError: (err: Error) => {
+      toast.error('Failed to delete category', { description: err.message });
+    },
+  });
 
   /* ── Paginated data query ─────────────────────────────────────────────── */
   const { data, isLoading } = useQuery({
@@ -293,11 +323,29 @@ export function Categories() {
                     <td className="td text-gray-600 text-sm">{fmtDate(c.submitted_at)}</td>
                     <td className="td text-gray-600 text-sm">{fmtDate(c.approved_at)}</td>
 
-                    {/* Arrow */}
+                    {/* Actions */}
                     <td className="td text-right">
-                      <svg className="w-4 h-4 text-gray-300 inline" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path d="M9 18l6-6-6-6" />
-                      </svg>
+                      <div className="flex items-center justify-end gap-2">
+                        {profile?.role === 'admin' && (
+                          <button
+                            type="button"
+                            className="btn-danger py-1 px-3 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toast('Delete this category?', {
+                                description: 'This will also delete all its recipes. This cannot be undone.',
+                                action: { label: 'Delete', onClick: () => deleteCategory.mutate(c.id) },
+                                cancel: { label: 'Cancel', onClick: () => {} },
+                              });
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                        <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                      </div>
                     </td>
                   </tr>
                 ))}
