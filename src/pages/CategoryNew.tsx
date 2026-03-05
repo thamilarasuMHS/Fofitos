@@ -12,8 +12,9 @@ export function CategoryNew() {
   const { profile } = useAuth();
 
   const [name, setName]                     = useState('');
-  const [selectedParams, setSelectedParams] = useState<Record<string, { min: number; max: number }>>({});
+  const [selectedParams, setSelectedParams] = useState<Record<string, { min: string; max: string }>>({});
   const [selectedComps, setSelectedComps]   = useState<Set<string>>(new Set());
+  const [submitted, setSubmitted]           = useState(false);
 
   /* ── Data ─────────────────────────────────────────────── */
   const { data: parameters } = useQuery({
@@ -50,15 +51,39 @@ export function CategoryNew() {
     if (allParamSel) {
       setSelectedParams({});
     } else {
-      const all: Record<string, { min: number; max: number }> = {};
-      for (const id of allParamIds) all[id] = selectedParams[id] ?? { min: 0, max: 100 };
+      const all: Record<string, { min: string; max: string }> = {};
+      for (const id of allParamIds) all[id] = selectedParams[id] ?? { min: '', max: '' };
       setSelectedParams(all);
     }
   }
   function toggleParam(id: string, checked: boolean) {
-    if (checked) setSelectedParams((s) => ({ ...s, [id]: { min: 0, max: 100 } }));
+    if (checked) setSelectedParams((s) => ({ ...s, [id]: { min: '', max: '' } }));
     else setSelectedParams((s) => { const n = { ...s }; delete n[id]; return n; });
   }
+
+  /* ── Validation ────────────────────────────────────────── */
+  const paramErrors = Object.entries(selectedParams).reduce<Record<string, { min: boolean; max: boolean }>>(
+    (acc, [id, v]) => {
+      acc[id] = { min: v.min === '', max: v.max === '' };
+      return acc;
+    }, {}
+  );
+  const hasParamErrors = Object.values(paramErrors).some((e) => e.min || e.max);
+  const isFormValid    = name.trim().length > 0 && !hasParamErrors;
+
+  /* ── Auto-select "Others" component when library loads ─── */
+  useEffect(() => {
+    if (!componentLibrary) return;
+    const othersItem = componentLibrary.find((c) => c.name.toLowerCase() === 'others');
+    if (othersItem) {
+      setSelectedComps((prev) => {
+        if (prev.has(othersItem.id)) return prev;   // already selected
+        const next = new Set(prev);
+        next.add(othersItem.id);
+        return next;
+      });
+    }
+  }, [componentLibrary]);
 
   /* ── Component Headers — select-all logic ─────────────── */
   const allCompIds  = componentLibrary?.map((c) => c.id) ?? [];
@@ -105,7 +130,7 @@ export function CategoryNew() {
 
       /* Insert selected nutrition goals */
       const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => ({
-        category_id: cat.id, parameter_id: paramId, goal_min: g.min, goal_max: g.max,
+        category_id: cat.id, parameter_id: paramId, goal_min: Number(g.min), goal_max: Number(g.max),
       }));
       if (goalInserts.length) {
         const { error: goalErr } = await supabase.from('category_goals').insert(goalInserts);
@@ -188,6 +213,12 @@ export function CategoryNew() {
               )}
             </div>
 
+            {submitted && hasParamErrors && (
+              <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600 font-medium">
+                Please fill in Min and Max values for all selected parameters.
+              </div>
+            )}
+
             <div className="card-body space-y-2">
               {parameters?.map((p) => {
                 const isChecked = selectedParams[p.id] != null;
@@ -212,10 +243,11 @@ export function CategoryNew() {
                           <span className="text-xs text-gray-400">Min</span>
                           <input
                             type="number"
-                            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                            placeholder="0"
+                            className={`w-20 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                             value={selectedParams[p.id].min}
                             onChange={(e) => setSelectedParams((s) => ({
-                              ...s, [p.id]: { ...s[p.id], min: Number(e.target.value) },
+                              ...s, [p.id]: { ...s[p.id], min: e.target.value },
                             }))}
                           />
                         </div>
@@ -223,10 +255,11 @@ export function CategoryNew() {
                           <span className="text-xs text-gray-400">Max</span>
                           <input
                             type="number"
-                            className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                            placeholder="100"
+                            className={`w-20 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                             value={selectedParams[p.id].max}
                             onChange={(e) => setSelectedParams((s) => ({
-                              ...s, [p.id]: { ...s[p.id], max: Number(e.target.value) },
+                              ...s, [p.id]: { ...s[p.id], max: e.target.value },
                             }))}
                           />
                         </div>
@@ -297,8 +330,12 @@ export function CategoryNew() {
           <button
             type="button"
             className="btn-primary px-8"
-            onClick={() => createCategory.mutate()}
-            disabled={!name.trim() || createCategory.isPending}
+            onClick={() => {
+              setSubmitted(true);
+              if (!isFormValid) return;
+              createCategory.mutate();
+            }}
+            disabled={createCategory.isPending}
           >
             {createCategory.isPending ? (
               <span className="flex items-center gap-2">
