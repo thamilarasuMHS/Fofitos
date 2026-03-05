@@ -14,23 +14,15 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function SaveBadge({ status }: { status: string }) {
-  const isDraft = status === 'draft';
-  return (
-    <span className={`badge text-[11px] ${isDraft ? 'bg-gray-100 text-gray-500' : 'bg-blue-50 text-blue-700'}`}>
-      {isDraft ? 'Draft' : 'Submitted'}
-    </span>
-  );
-}
-
-function ApprovalBadge({ status }: { status: string }) {
-  if (status === 'draft') return null;
+function StatusBadge({ status }: { status: string }) {
   const cls: Record<string, string> = {
+    draft:            'bg-gray-100 text-gray-500',
     pending_approval: 'bg-amber-50 text-amber-700',
     approved:         'bg-green-50 text-green-700',
     rejected:         'bg-red-50 text-red-700',
   };
   const labels: Record<string, string> = {
+    draft:            'Draft',
     pending_approval: 'Pending',
     approved:         'Approved',
     rejected:         'Rejected',
@@ -258,12 +250,9 @@ export function Categories() {
                       </div>
                     </td>
 
-                    {/* Status badges */}
+                    {/* Status badge */}
                     <td className="td">
-                      <div className="flex items-center gap-1.5">
-                        <SaveBadge status={c.status} />
-                        <ApprovalBadge status={c.status} />
-                      </div>
+                      <StatusBadge status={c.status} />
                     </td>
 
                     {/* Created By */}
