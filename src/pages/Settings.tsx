@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { NutritionParameter, ParamUnit, ParamTypeEnum, DirectionEnum } from '@/types/database';
 
@@ -244,12 +245,16 @@ export function Settings() {
                           onClick={() => {
                             const count = inUseCount?.[p.id] ?? 0;
                             if (count > 0) {
-                              alert(`Used in ${count} categories. Remove from all categories before deleting.`);
+                              toast.error('Cannot delete parameter', {
+                                description: `Used in ${count} categor${count === 1 ? 'y' : 'ies'}. Remove from all categories before deleting.`,
+                              });
                               return;
                             }
-                            if (window.confirm('Delete this parameter? This cannot be undone.')) {
-                              deleteParam.mutate(p.id);
-                            }
+                            toast('Delete this parameter?', {
+                              description: 'This cannot be undone.',
+                              action: { label: 'Delete', onClick: () => deleteParam.mutate(p.id) },
+                              cancel: { label: 'Cancel', onClick: () => {} },
+                            });
                           }}>
                           Delete
                         </button>

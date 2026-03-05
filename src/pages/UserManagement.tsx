@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { Profile, AppRole } from '@/types/database';
 
@@ -194,9 +195,11 @@ export function UserManagement() {
                         type="button"
                         className="btn-danger"
                         onClick={() => {
-                          if (window.confirm('Deactivate this user? They will not be able to log in.')) {
-                            updateProfile.mutate({ id: u.id, status: 'deactivated' });
-                          }
+                          toast('Deactivate this user?', {
+                            description: 'They will not be able to log in.',
+                            action: { label: 'Deactivate', onClick: () => updateProfile.mutate({ id: u.id, status: 'deactivated' }) },
+                            cancel: { label: 'Cancel', onClick: () => {} },
+                          });
                         }}
                       >
                         Deactivate

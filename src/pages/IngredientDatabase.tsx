@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { IngredientDatabase as IngredientDB, SauceLibrary as Sauce, Profile, RawCookedEnum } from '@/types/database';
@@ -337,9 +338,11 @@ export function IngredientDatabase() {
                           {canDelete && (
                             <button type="button" className="btn-danger"
                               onClick={() => {
-                                if (window.confirm('Are you sure? Existing recipes will keep their saved values.')) {
-                                  softDeleteIngredient.mutate(row.id);
-                                }
+                                toast('Delete this ingredient?', {
+                                  description: 'Existing recipes will keep their saved values.',
+                                  action: { label: 'Delete', onClick: () => softDeleteIngredient.mutate(row.id) },
+                                  cancel: { label: 'Cancel', onClick: () => {} },
+                                });
                               }}>
                               Delete
                             </button>

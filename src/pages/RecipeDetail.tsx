@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { computeTotals, overallScore, scoreParameter, getScoreColor } from '@/lib/scoring';
@@ -365,7 +366,13 @@ export function RecipeDetail() {
         )}
         {canRequestDeletion && (
           <button type="button" className="text-red-600 text-sm hover:underline"
-            onClick={() => { if (window.confirm('Request deletion of this recipe? An admin must approve.')) requestDeletion.mutate(); }}>
+            onClick={() => {
+              toast('Request deletion of this recipe?', {
+                description: 'An admin must approve the deletion.',
+                action: { label: 'Request', onClick: () => requestDeletion.mutate() },
+                cancel: { label: 'Cancel', onClick: () => {} },
+              });
+            }}>
             Request deletion
           </button>
         )}
