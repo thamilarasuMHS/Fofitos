@@ -260,7 +260,7 @@ export function Dashboard() {
 
         {(profile.role === 'admin' || profile.role === 'manager' || profile.role === 'dietician') && (
           <>
-            <StatCard to="/sauce-library" value={sauces} label="Sauces"
+            <StatCard to="/ingredient-database" value={sauces} label="Sub Component"
               icon={icons.sauces} color="bg-amber-50" />
             <StatCard to="/ingredient-database" value={ingredientsCount} label="Ingredients"
               icon={icons.ingredients} color="bg-emerald-50" />
