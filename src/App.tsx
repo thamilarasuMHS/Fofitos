@@ -12,6 +12,7 @@ import { ComponentsSettings } from '@/pages/ComponentsSettings';
 import { Categories } from '@/pages/Categories';
 import { CategoryNew } from '@/pages/CategoryNew';
 import { CategoryDetail } from '@/pages/CategoryDetail';
+import { CategoryEdit } from '@/pages/CategoryEdit';
 import { IngredientDatabase } from '@/pages/IngredientDatabase';
 import { RecipeDetail } from '@/pages/RecipeDetail';
 
@@ -51,6 +52,7 @@ function ProtectedRoutes() {
         <Route path="/categories" element={<Categories />} />
         <Route path="/categories/new" element={<CategoryNew />} />
         <Route path="/categories/:categoryId" element={<CategoryDetail />} />
+        <Route path="/categories/:categoryId/edit" element={<CategoryEdit />} />
         <Route path="/categories/:categoryId/recipes/:recipeId" element={<RecipeDetail />} />
 <Route path="/ingredient-database" element={<IngredientDatabase />} />
         <Route
