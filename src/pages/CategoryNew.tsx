@@ -244,6 +244,7 @@ export function CategoryNew() {
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-gray-400">Min</span>
+                          {p.unit === 'ratio' && <span className="text-xs text-violet-600 font-medium font-mono">1:</span>}
                           <input
                             type="number"
                             placeholder="0"
@@ -256,6 +257,7 @@ export function CategoryNew() {
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-gray-400">Max</span>
+                          {p.unit === 'ratio' && <span className="text-xs text-violet-600 font-medium font-mono">1:</span>}
                           <input
                             type="number"
                             placeholder="100"

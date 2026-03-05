@@ -477,23 +477,29 @@ export function RecipeDetail() {
                 }
 
                 /* Unit label */
+                const isRatio = param.param_type === 'ratio';
                 const unit =
                   param.name === 'Calories' ? 'kcal' :
                   param.name === 'Sodium'   ? 'mg'   :
-                  param.param_type === 'ratio' ? '' : 'g';
+                  isRatio ? '' : 'g';
 
                 /* Decimals */
-                const decimals = param.name === 'Sodium' ? 0 : 1;
+                const decimals = param.name === 'Sodium' ? 0 : 2;
+
+                /* Format helpers */
+                const displayValue   = value  != null ? (isRatio ? `1:${value.toFixed(2)}`       : value.toFixed(decimals)) : '—';
+                const displayGoalMin = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
+                const displayGoalMax = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
 
                 return (
                   <div key={g.id} className="card p-4">
                     <p className="text-xs font-medium text-gray-500 mb-1">{param.name}</p>
                     <p className="text-2xl font-bold text-gray-900">
-                      {value != null ? value.toFixed(decimals) : '—'}
+                      {displayValue}
                       {unit && <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>}
                     </p>
                     <p className="text-[11px] text-gray-400 mt-1">
-                      Goal: {g.goal_min} – {g.goal_max}
+                      Goal: {displayGoalMin} – {displayGoalMax}
                       {unit && <span className="ml-0.5">{unit}</span>}
                     </p>
                   </div>
@@ -626,11 +632,16 @@ export function RecipeDetail() {
                             }
                           }
 
+                          const isRatio = param.param_type === 'ratio';
                           const unit =
                             param.name === 'Calories'      ? 'kcal' :
                             param.name === 'Sodium'        ? 'mg'   :
-                            param.param_type === 'ratio'   ? ''     : 'g';
-                          const decimals = param.name === 'Sodium' ? 0 : 1;
+                            isRatio ? '' : 'g';
+                          const decimals = param.name === 'Sodium' ? 0 : 2;
+
+                          const displayActual   = actual != null ? (isRatio ? `1:${actual.toFixed(2)}`    : actual.toFixed(decimals)) : '—';
+                          const displayGoalMin  = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
+                          const displayGoalMax  = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
 
                           /* Is actual within goal range? */
                           const withinRange = actual != null && actual >= g.goal_min && actual <= g.goal_max;
@@ -646,16 +657,16 @@ export function RecipeDetail() {
                                   withinRange ? 'text-green-700' :
                                   color === 'orange' ? 'text-amber-700' : 'text-red-700'
                                 }`}>
-                                  {actual != null ? actual.toFixed(decimals) : '—'}
+                                  {displayActual}
                                 </span>
                                 {unit && <span className="text-xs text-gray-400 ml-0.5">{unit}</span>}
                               </td>
 
                               {/* Goal range */}
                               <td className="td text-center text-sm text-gray-500">
-                                {g.goal_min}
+                                {displayGoalMin}
                                 <span className="text-gray-300 mx-0.5">–</span>
-                                {g.goal_max}
+                                {displayGoalMax}
                                 {unit && <span className="text-xs text-gray-400 ml-0.5">{unit}</span>}
                               </td>
 
@@ -847,7 +858,9 @@ export function RecipeDetail() {
                                 <span className="text-sm font-semibold text-gray-800 truncate">{paramName}</span>
                                 {goal && (
                                   <span className="text-[10px] text-gray-400 shrink-0 hidden sm:inline">
-                                    Goal: {goal.min}–{goal.max} {param?.unit ?? ''}
+                                    {param?.unit === 'ratio'
+                                      ? `Goal: 1:${goal.min}–1:${goal.max}`
+                                      : `Goal: ${goal.min}–${goal.max} ${param?.unit ?? ''}`}
                                   </span>
                                 )}
                               </div>
@@ -858,7 +871,9 @@ export function RecipeDetail() {
                             {/* Goal range label on mobile */}
                             {goal && (
                               <p className="text-[10px] text-gray-400 mb-1 sm:hidden">
-                                Goal: {goal.min}–{goal.max} {param?.unit ?? ''}
+                                {param?.unit === 'ratio'
+                                  ? `Goal: 1:${goal.min}–1:${goal.max}`
+                                  : `Goal: ${goal.min}–${goal.max} ${param?.unit ?? ''}`}
                               </p>
                             )}
                             {/* Progress bar */}
