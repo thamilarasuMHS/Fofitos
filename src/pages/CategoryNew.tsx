@@ -69,7 +69,21 @@ export function CategoryNew() {
     }, {}
   );
   const hasParamErrors = Object.values(paramErrors).some((e) => e.min || e.max);
-  const isFormValid    = name.trim().length > 0 && !hasParamErrors;
+
+  // Range check: computed goalMin must be ≤ goalMax
+  const rangeErrors = Object.entries(selectedParams).reduce<Record<string, boolean>>(
+    (acc, [id, v]) => {
+      if (v.min === '' || v.max === '') return acc;
+      const param = parameters?.find((p) => p.id === id);
+      const isRatio = param?.param_type === 'ratio';
+      const goalMin = isRatio ? Number(v.min) / (Number(v.minLeft) || 1) : Number(v.min);
+      const goalMax = isRatio ? Number(v.max) / (Number(v.maxLeft) || 1) : Number(v.max);
+      if (goalMin > goalMax) acc[id] = true;
+      return acc;
+    }, {}
+  );
+  const hasRangeErrors = Object.keys(rangeErrors).length > 0;
+  const isFormValid    = name.trim().length > 0 && !hasParamErrors && !hasRangeErrors;
 
   /* ── Auto-select "Others" component when library loads ─── */
   useEffect(() => {
@@ -220,9 +234,10 @@ export function CategoryNew() {
               )}
             </div>
 
-            {submitted && hasParamErrors && (
-              <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600 font-medium">
-                Please fill in Min and Max values for all selected parameters.
+            {submitted && (hasParamErrors || hasRangeErrors) && (
+              <div className="mx-4 mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600 font-medium space-y-1">
+                {hasParamErrors && <p>Please fill in Min and Max values for all selected parameters.</p>}
+                {hasRangeErrors && <p>Min value cannot be greater than Max value for highlighted parameters.</p>}
               </div>
             )}
 
@@ -231,7 +246,7 @@ export function CategoryNew() {
                 const isChecked = selectedParams[p.id] != null;
                 const higher    = p.direction === 'higher_is_better';
                 return (
-                  <div key={p.id} className={`flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5 transition-colors ${isChecked ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                  <div key={p.id} className={`flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5 transition-colors ${submitted && rangeErrors[p.id] ? 'bg-red-50' : isChecked ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
                     <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
                       <input
                         type="checkbox"
@@ -307,6 +322,11 @@ export function CategoryNew() {
                           )}
                         </div>
                       </div>
+                    )}
+                    {isChecked && submitted && rangeErrors[p.id] && (
+                      <p className="w-full text-[11px] text-red-500 font-medium pl-6 mt-0.5">
+                        ⚠ Min value cannot be greater than Max value
+                      </p>
                     )}
                   </div>
                 );
