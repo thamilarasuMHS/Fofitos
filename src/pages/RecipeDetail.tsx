@@ -144,17 +144,17 @@ export function RecipeDetail() {
         actual = totals[nameToKey[param.name] ?? 'protein_g'] ?? 0;
       } else {
         // Ratio parameter.
-        // Goals are stored as normalizedRatio = second/first = denominator/numerator (B/A).
-        // So actual must also be denominator/numerator to compare correctly.
-        // Example — Protein:Carb goals stored as Carb/Protein ∈ [1, 2.5]:
-        //   actual = carbs_g / protein_g  →  valid when 1 ≤ actual ≤ 2.5
+        // Goals stored as normalizedRatio = A/B = numerator/denominator (first ÷ second).
+        // actual must be in the same direction: numerator / denominator.
+        // Example — Carb:Fibre goals stored as Carb/Fibre ∈ [1, 4]:
+        //   actual = carbs_g / fibre_g  →  valid when 1 ≤ actual ≤ 4
         const numParam = parameters.find((p) => p.id === param.numerator_param_id);
         const denParam = parameters.find((p) => p.id === param.denominator_param_id);
         const numKey = numParam ? nameToKey[numParam.name] : null;
         const denKey = denParam ? nameToKey[denParam.name] : null;
         const n = numKey ? totals[numKey] ?? 0 : 0;
         const d = denKey ? totals[denKey] ?? 0 : 0;
-        actual = n > 0 ? d / n : 0;   // denominator ÷ numerator = B/A
+        actual = d > 0 ? n / d : 0;   // numerator ÷ denominator = A/B
       }
       scores[param.id] = scoreParameter(actual, g.goal_min, g.goal_max, param.direction);
     }
@@ -494,8 +494,8 @@ export function RecipeDetail() {
 
                 /* Format helpers */
                 const displayValue   = value  != null ? (isRatio ? `${ratioN.toFixed(2)}:${ratioD.toFixed(2)}` : value.toFixed(decimals)) : '—';
-                const displayGoalMin = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
-                const displayGoalMax = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
+                const displayGoalMin = isRatio ? `${g.goal_min}:1` : String(g.goal_min);
+                const displayGoalMax = isRatio ? `${g.goal_max}:1` : String(g.goal_max);
 
                 return (
                   <div key={g.id} className="card p-4">
@@ -630,16 +630,16 @@ export function RecipeDetail() {
                               actual = k != null ? (totals[k] ?? null) : null;
                             } else {
                               // Ratio parameter.
-                              // scN = numerator total (first label, e.g. Protein)
-                              // scD = denominator total (second label, e.g. Carb)
-                              // Goals stored as B/A = second/first = scD/scN, so actual must match.
+                              // scN = numerator total (first/left of label, e.g. Carb)
+                              // scD = denominator total (second/right of label, e.g. Fibre)
+                              // Goals stored as A/B = first/second = scN/scD, so actual must match.
                               const numP = parameters.find((p) => p.id === param.numerator_param_id);
                               const denP = parameters.find((p) => p.id === param.denominator_param_id);
                               const nk = numP ? nameToKey[numP.name] : null;
                               const dk = denP ? nameToKey[denP.name] : null;
                               scN = nk ? (totals[nk] ?? 0) : 0;
                               scD = dk ? (totals[dk] ?? 0) : 0;
-                              actual = scN > 0 ? scD / scN : null; // B/A = denominator ÷ numerator
+                              actual = scD > 0 ? scN / scD : null; // A/B = numerator ÷ denominator
                             }
                           }
 
@@ -650,11 +650,11 @@ export function RecipeDetail() {
                             isRatio ? '' : 'g';
                           const decimals = param.name === 'Sodium' ? 0 : 2;
 
-                          // Display actual as numerator:denominator (raw amounts, e.g. "20.00:40.00")
-                          // Goals displayed as "1:stored" (e.g. "1:1" – "1:2.5")
+                          // Display actual as numerator:denominator (raw amounts, e.g. "40.00:10.00" = Carb:Fibre)
+                          // Goals displayed as "stored:1" (e.g. "1:1" – "4:1" for Carb:Fibre)
                           const displayActual   = actual != null ? (isRatio ? `${scN.toFixed(2)}:${scD.toFixed(2)}` : actual.toFixed(decimals)) : '—';
-                          const displayGoalMin  = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
-                          const displayGoalMax  = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
+                          const displayGoalMin  = isRatio ? `${g.goal_min}:1` : String(g.goal_min);
+                          const displayGoalMax  = isRatio ? `${g.goal_max}:1` : String(g.goal_max);
 
                           /* Is actual within goal range?
                              actual = scD/scN (B/A direction); goals stored in same direction. */
@@ -662,7 +662,7 @@ export function RecipeDetail() {
 
                           /* Human-readable validation hint shown when out of range */
                           const rangeHint = isRatio && actual != null && !withinRange
-                            ? `${param.name} ratio must be between ${displayGoalMin} and ${displayGoalMax}`
+                            ? `${param.name} ratio must be between ${displayGoalMin} and ${displayGoalMax} (actual: ${displayActual})`
                             : null;
 
                           return (

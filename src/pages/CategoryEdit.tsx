@@ -75,16 +75,16 @@ export function CategoryEdit() {
     setName(category.name ?? '');
 
     // Nutrition goals — keyed by parameter_id.
-    // Stored value = normalizedRatio = second/first. We show it as "1 : storedValue",
-    // so left (first) = '1' and right (second/min) = storedValue.
-    // On re-save: normalizeDisplayedRatio(1, storedValue) = storedValue ✓ (round-trip safe).
+    // Stored value = normalizedRatio = first/second (A/B). We show it as "storedValue : 1",
+    // so left (first/minLeft) = storedValue and right (second/min) = '1'.
+    // On re-save: normalizeDisplayedRatio(storedValue, 1) = storedValue/1 = storedValue ✓ (round-trip safe).
     const paramMap: Record<string, { min: string; max: string; minLeft: string; maxLeft: string }> = {};
     for (const g of goals) {
       paramMap[g.parameter_id] = {
-        minLeft: '1',
-        min:     g.goal_min != null ? String(g.goal_min) : '',
-        maxLeft: '1',
-        max:     g.goal_max != null ? String(g.goal_max) : '',
+        minLeft: g.goal_min != null ? String(g.goal_min) : '',
+        min:     '1',
+        maxLeft: g.goal_max != null ? String(g.goal_max) : '',
+        max:     '1',
       };
     }
     setSelectedParams(paramMap);

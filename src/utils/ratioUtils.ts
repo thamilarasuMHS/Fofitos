@@ -2,31 +2,28 @@
  * Ratio normalization utilities.
  *
  * Business rule:
- *   For a displayed ratio  A : B  (e.g. "Protein : Carb = 1 : 2.5"),
- *   the meaning is: "for every 1 unit of A, there are B units of the second nutrient."
- *
- *   Therefore the normalised scalar we store in the DB is:
- *       normalizedRatio = B / A  (second ÷ first)
+ *   For a displayed ratio  A : B  (e.g. "Carb : Fibre = 4 : 1"),
+ *   the normalised scalar is:
+ *       normalizedRatio = A / B  (first ÷ second = left ÷ right)
  *
  *   Examples
  *   ─────────────────────────────────────────────────
- *   1 : 1    →  1 / 1   = 1
- *   1 : 2.5  →  2.5 / 1 = 2.5
- *   2 : 4    →  4 / 2   = 2
- *   1 : 10   →  10 / 1  = 10
+ *   1 : 1   →  1 / 1  = 1
+ *   4 : 1   →  4 / 1  = 4
+ *   10 : 1  →  10 / 1 = 10
+ *   1 : 2   →  1 / 2  = 0.5
  *   ─────────────────────────────────────────────────
  *
- *   When we load a stored value back for editing / display we show it as "1 : storedValue"
- *   because that is the canonical 1-based representation of the same proportion.
+ *   Range validity: min ≤ max means normalised(min) ≤ normalised(max).
+ *   Example — Carb:Fibre min=1:1, max=4:1 → 1 ≤ 4  ✓  (valid)
+ *             Omega-6:Omega-3 min=1:1, max=10:1 → 1 ≤ 10 ✓  (valid)
+ *
+ *   Display: stored value is A/B; shown back as  storedValue : 1.
+ *   Pre-fill: minLeft = storedValue, min = "1"
+ *             On re-save: normalizeDisplayedRatio(storedValue, 1) = storedValue / 1 = storedValue ✓
  *
  * Actual recipe validation:
- *   actual = numerator_total / denominator_total
- *   (numerator / denominator are defined per-parameter in the DB)
- *
- *   For Protein:Carb  → actual = carbs_total / protein_total
- *   For Carb:Fibre    → actual = fibre_total / carbs_total
- *   For Omega-6:Omega-3 → actual = omega3_total / omega6_total
- *
+ *   actual = numerator_total / denominator_total   (A / B direction)
  *   Valid when: goal_min ≤ actual ≤ goal_max
  */
 
@@ -34,37 +31,36 @@
  * Convert a user-entered  first : second  ratio into the normalised decimal
  * that is stored in the database.
  *
- * @param first  - Left-hand side of the ratio (the base; must be > 0).
- * @param second - Right-hand side of the ratio (the variable amount).
- * @returns  second / first, or null when first ≤ 0 (invalid / divide-by-zero).
+ * @param first  - Left-hand side of the ratio (A).
+ * @param second - Right-hand side of the ratio (B; must be > 0).
+ * @returns  first / second, or null when second ≤ 0 (divide-by-zero guard).
  */
 export function normalizeDisplayedRatio(first: number, second: number): number | null {
-  if (first <= 0) return null; // guard: divide-by-zero or negative base
-  return second / first;
+  if (second <= 0) return null; // guard: divide-by-zero or zero denominator
+  return first / second;
 }
 
 /**
  * Format a stored normalised ratio back to a human-readable display string.
- * Because normalizedRatio = second / first and we always use 1 as the base
- * when re-displaying, the canonical form is "1 : storedValue".
+ * Stored value = A/B; canonical re-display form is "storedValue : 1".
  *
  * @param stored - The normalised decimal from the DB (goal_min / goal_max).
- * @returns A string like "1:2.5", or "—" when the value is null/undefined.
+ * @returns A string like "4:1", or "—" when the value is null/undefined.
  */
 export function formatStoredRatio(stored: number | null | undefined): string {
   if (stored == null) return '—';
-  return `1:${stored}`;
+  return `${stored}:1`;
 }
 
 /**
  * Validate that a ratio range is coherent: normalised min ≤ normalised max.
  *
- * @param minFirst   - Left side of the Min input.
- * @param minSecond  - Right side of the Min input.
- * @param maxFirst   - Left side of the Max input.
- * @param maxSecond  - Right side of the Max input.
- * @returns  true when the range is valid (min ≤ max), false otherwise.
- *           Also returns false when any base is ≤ 0 (divide-by-zero guard).
+ * @param minFirst   - Left side of the Min input  (A of min ratio).
+ * @param minSecond  - Right side of the Min input (B of min ratio).
+ * @param maxFirst   - Left side of the Max input  (A of max ratio).
+ * @param maxSecond  - Right side of the Max input (B of max ratio).
+ * @returns  true when the range is valid (normalised min ≤ normalised max).
+ *           false when either second value is ≤ 0 (divide-by-zero guard).
  */
 export function isRatioRangeValid(
   minFirst: number, minSecond: number,

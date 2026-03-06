@@ -410,10 +410,10 @@ export function CategoryDetail() {
                           )}
                         </td>
                         <td className="td text-center text-gray-700 font-medium">
-                          {param?.unit === 'ratio' ? `1:${g.goal_min}` : g.goal_min}
+                          {param?.unit === 'ratio' ? `${g.goal_min}:1` : g.goal_min}
                         </td>
                         <td className="td text-center text-gray-700 font-medium">
-                          {param?.unit === 'ratio' ? `1:${g.goal_max}` : g.goal_max}
+                          {param?.unit === 'ratio' ? `${g.goal_max}:1` : g.goal_max}
                         </td>
                         <td className="td text-center">
                           <span className="badge bg-gray-50 text-gray-500 text-[10px]">
