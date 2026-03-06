@@ -463,6 +463,7 @@ export function RecipeDetail() {
 
                 /* Compute actual value */
                 let value: number | null = null;
+                let ratioN = 0, ratioD = 0;
                 if (param.param_type === 'absolute') {
                   const k = nameToKey[param.name];
                   value = k != null ? (totals[k] ?? null) : null;
@@ -471,9 +472,9 @@ export function RecipeDetail() {
                   const denParam = parameters.find((p) => p.id === param.denominator_param_id);
                   const nk = numParam ? nameToKey[numParam.name] : null;
                   const dk = denParam ? nameToKey[denParam.name] : null;
-                  const n = nk ? (totals[nk] ?? 0) : 0;
-                  const d = dk ? (totals[dk] ?? 0) : 0;
-                  value = d ? n / d : null;
+                  ratioN = nk ? (totals[nk] ?? 0) : 0;
+                  ratioD = dk ? (totals[dk] ?? 0) : 0;
+                  value = ratioD ? ratioN / ratioD : null;
                 }
 
                 /* Unit label */
@@ -487,7 +488,7 @@ export function RecipeDetail() {
                 const decimals = param.name === 'Sodium' ? 0 : 2;
 
                 /* Format helpers */
-                const displayValue   = value  != null ? (isRatio ? `1:${value.toFixed(2)}`       : value.toFixed(decimals)) : '—';
+                const displayValue   = value  != null ? (isRatio ? `${ratioN.toFixed(2)}:${ratioD.toFixed(2)}` : value.toFixed(decimals)) : '—';
                 const displayGoalMin = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
                 const displayGoalMax = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
 
@@ -617,6 +618,7 @@ export function RecipeDetail() {
 
                           /* Compute actual value for this parameter */
                           let actual: number | null = null;
+                          let scN = 0, scD = 0;
                           if (totals) {
                             if (param.param_type === 'absolute') {
                               const k = nameToKey[param.name];
@@ -626,9 +628,9 @@ export function RecipeDetail() {
                               const denP = parameters.find((p) => p.id === param.denominator_param_id);
                               const nk = numP ? nameToKey[numP.name] : null;
                               const dk = denP ? nameToKey[denP.name] : null;
-                              const n = nk ? (totals[nk] ?? 0) : 0;
-                              const d = dk ? (totals[dk] ?? 0) : 0;
-                              actual = d ? n / d : null;
+                              scN = nk ? (totals[nk] ?? 0) : 0;
+                              scD = dk ? (totals[dk] ?? 0) : 0;
+                              actual = scD ? scN / scD : null;
                             }
                           }
 
@@ -639,7 +641,7 @@ export function RecipeDetail() {
                             isRatio ? '' : 'g';
                           const decimals = param.name === 'Sodium' ? 0 : 2;
 
-                          const displayActual   = actual != null ? (isRatio ? `1:${actual.toFixed(2)}`    : actual.toFixed(decimals)) : '—';
+                          const displayActual   = actual != null ? (isRatio ? `${scN.toFixed(2)}:${scD.toFixed(2)}` : actual.toFixed(decimals)) : '—';
                           const displayGoalMin  = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
                           const displayGoalMax  = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
 

@@ -11,7 +11,7 @@ export function CategoryEdit() {
   const queryClient     = useQueryClient();
 
   const [name, setName]                     = useState('');
-  const [selectedParams, setSelectedParams] = useState<Record<string, { min: string; max: string }>>({});
+  const [selectedParams, setSelectedParams] = useState<Record<string, { min: string; max: string; minLeft: string; maxLeft: string }>>({});
   const [selectedComps, setSelectedComps]   = useState<Set<string>>(new Set());
   const [submitted, setSubmitted]           = useState(false);
   const [initialized, setInitialized]       = useState(false);
@@ -74,10 +74,12 @@ export function CategoryEdit() {
     setName(category.name ?? '');
 
     // Nutrition goals — keyed by parameter_id
-    const paramMap: Record<string, { min: string; max: string }> = {};
+    const paramMap: Record<string, { min: string; max: string; minLeft: string; maxLeft: string }> = {};
     for (const g of goals) {
       paramMap[g.parameter_id] = {
+        minLeft: '1',
         min: g.goal_min != null ? String(g.goal_min) : '',
+        maxLeft: '1',
         max: g.goal_max != null ? String(g.goal_max) : '',
       };
     }
@@ -109,13 +111,13 @@ export function CategoryEdit() {
     if (allParamSel) {
       setSelectedParams({});
     } else {
-      const all: Record<string, { min: string; max: string }> = {};
-      for (const id of allParamIds) all[id] = selectedParams[id] ?? { min: '', max: '' };
+      const all: Record<string, { min: string; max: string; minLeft: string; maxLeft: string }> = {};
+      for (const id of allParamIds) all[id] = selectedParams[id] ?? { min: '', max: '', minLeft: '1', maxLeft: '1' };
       setSelectedParams(all);
     }
   }
   function toggleParam(id: string, checked: boolean) {
-    if (checked) setSelectedParams((s) => ({ ...s, [id]: s[id] ?? { min: '', max: '' } }));
+    if (checked) setSelectedParams((s) => ({ ...s, [id]: s[id] ?? { min: '', max: '', minLeft: '1', maxLeft: '1' } }));
     else setSelectedParams((s) => { const n = { ...s }; delete n[id]; return n; });
   }
 
@@ -164,10 +166,13 @@ export function CategoryEdit() {
 
       // 2. Replace nutrition goals
       await supabase.from('category_goals').delete().eq('category_id', categoryId);
-      const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => ({
-        category_id: categoryId, parameter_id: paramId,
-        goal_min: Number(g.min), goal_max: Number(g.max),
-      }));
+      const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => {
+        const param = parameters?.find((p) => p.id === paramId);
+        const isRatio = param?.param_type === 'ratio';
+        const goalMin = isRatio ? Number(g.min) / (Number(g.minLeft) || 1) : Number(g.min);
+        const goalMax = isRatio ? Number(g.max) / (Number(g.maxLeft) || 1) : Number(g.max);
+        return { category_id: categoryId, parameter_id: paramId, goal_min: goalMin, goal_max: goalMax };
+      });
       if (goalInserts.length) {
         const { error: goalErr } = await supabase.from('category_goals').insert(goalInserts);
         if (goalErr) throw goalErr;
@@ -288,29 +293,63 @@ export function CategoryEdit() {
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-gray-400">Min</span>
-                          {p.unit === 'ratio' && <span className="text-xs text-violet-600 font-medium font-mono">1:</span>}
-                          <input
-                            type="number"
-                            placeholder="0"
-                            className={`w-20 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
-                            value={selectedParams[p.id].min}
-                            onChange={(e) => setSelectedParams((s) => ({
-                              ...s, [p.id]: { ...s[p.id], min: e.target.value },
-                            }))}
-                          />
+                          {p.unit === 'ratio' ? (
+                            <>
+                              <input
+                                type="number"
+                                placeholder="1"
+                                className="w-12 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                value={selectedParams[p.id].minLeft}
+                                onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], minLeft: e.target.value } }))}
+                              />
+                              <span className="text-xs text-violet-600 font-bold font-mono">:</span>
+                              <input
+                                type="number"
+                                placeholder="0"
+                                className={`w-12 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                value={selectedParams[p.id].min}
+                                onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], min: e.target.value } }))}
+                              />
+                            </>
+                          ) : (
+                            <input
+                              type="number"
+                              placeholder="0"
+                              className={`w-20 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                              value={selectedParams[p.id].min}
+                              onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], min: e.target.value } }))}
+                            />
+                          )}
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-gray-400">Max</span>
-                          {p.unit === 'ratio' && <span className="text-xs text-violet-600 font-medium font-mono">1:</span>}
-                          <input
-                            type="number"
-                            placeholder="100"
-                            className={`w-20 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
-                            value={selectedParams[p.id].max}
-                            onChange={(e) => setSelectedParams((s) => ({
-                              ...s, [p.id]: { ...s[p.id], max: e.target.value },
-                            }))}
-                          />
+                          {p.unit === 'ratio' ? (
+                            <>
+                              <input
+                                type="number"
+                                placeholder="1"
+                                className="w-12 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                value={selectedParams[p.id].maxLeft}
+                                onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], maxLeft: e.target.value } }))}
+                              />
+                              <span className="text-xs text-violet-600 font-bold font-mono">:</span>
+                              <input
+                                type="number"
+                                placeholder="0"
+                                className={`w-12 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                value={selectedParams[p.id].max}
+                                onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], max: e.target.value } }))}
+                              />
+                            </>
+                          ) : (
+                            <input
+                              type="number"
+                              placeholder="100"
+                              className={`w-20 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                              value={selectedParams[p.id].max}
+                              onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], max: e.target.value } }))}
+                            />
+                          )}
                         </div>
                       </div>
                     )}
