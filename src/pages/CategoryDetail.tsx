@@ -12,7 +12,7 @@ import type {
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(iso).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function SaveBadge({ status }: { status: string }) {
@@ -324,7 +324,7 @@ export function CategoryDetail() {
           </div>
 
           {/* Meta info strip */}
-          <div className="mt-5 pt-4 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
+          <div className="mt-5 pt-4 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
             <div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Created By</p>
               <div className="flex items-center gap-1.5">
@@ -347,8 +347,20 @@ export function CategoryDetail() {
                 {category.status === 'rejected' ? 'Rejected On' : 'Approved On'}
               </p>
               <p className="text-xs text-gray-700">{fmtDate(category.approved_at)}</p>
-              {category.approved_by && (
-                <p className="text-[10px] text-gray-400 mt-0.5">by {resolveUser(category.approved_by)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">
+                {category.status === 'rejected' ? 'Rejected By' : 'Approved By'}
+              </p>
+              {category.approved_by ? (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-[10px] font-bold text-green-700 shrink-0">
+                    {(resolveUser(category.approved_by)?.[0] ?? '?').toUpperCase()}
+                  </div>
+                  <span className="text-xs text-gray-700 font-medium">{resolveUser(category.approved_by)}</span>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-700">—</p>
               )}
             </div>
           </div>

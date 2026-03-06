@@ -12,7 +12,7 @@ type StatusFilter = 'all' | 'approved' | 'pending_approval' | 'draft' | 'rejecte
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(iso).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function StatusBadge({ status }: { status: string }) {
