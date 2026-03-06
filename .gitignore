@@ -2,7 +2,6 @@
 node_modules/
 
 # Build output
-dist/
 dist-ssr/
 
 # Environment files — never commit secrets
@@ -31,3 +30,5 @@ nul
 
 # Supabase local
 supabase/.temp/
+
+.vercel
