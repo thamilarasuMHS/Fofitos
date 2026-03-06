@@ -77,10 +77,10 @@ export function CategoryEdit() {
     const paramMap: Record<string, { min: string; max: string; minLeft: string; maxLeft: string }> = {};
     for (const g of goals) {
       paramMap[g.parameter_id] = {
-        minLeft: '1',
-        min: g.goal_min != null ? String(g.goal_min) : '',
-        maxLeft: '1',
-        max: g.goal_max != null ? String(g.goal_max) : '',
+        minLeft: g.goal_min != null ? String(g.goal_min) : '',
+        min: '1',
+        maxLeft: g.goal_max != null ? String(g.goal_max) : '',
+        max: '1',
       };
     }
     setSelectedParams(paramMap);
@@ -130,14 +130,15 @@ export function CategoryEdit() {
   );
   const hasParamErrors = Object.values(paramErrors).some((e) => e.min || e.max);
 
-  // Range check: computed goalMin must be ≤ goalMax
+  // Range check: computed goalMin must be ≤ goalMax (formula: left / right)
   const rangeErrors = Object.entries(selectedParams).reduce<Record<string, boolean>>(
     (acc, [id, v]) => {
       if (v.min === '' || v.max === '') return acc;
       const param = parameters?.find((p) => p.id === id);
       const isRatio = param?.param_type === 'ratio';
-      const goalMin = isRatio ? Number(v.min) / (Number(v.minLeft) || 1) : Number(v.min);
-      const goalMax = isRatio ? Number(v.max) / (Number(v.maxLeft) || 1) : Number(v.max);
+      const rMin = Number(v.min), rMax = Number(v.max);
+      const goalMin = isRatio ? (rMin === 0 ? 0 : Number(v.minLeft) / rMin) : Number(v.min);
+      const goalMax = isRatio ? (rMax === 0 ? 0 : Number(v.maxLeft) / rMax) : Number(v.max);
       if (goalMin > goalMax) acc[id] = true;
       return acc;
     }, {}
@@ -183,8 +184,9 @@ export function CategoryEdit() {
       const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => {
         const param = parameters?.find((p) => p.id === paramId);
         const isRatio = param?.param_type === 'ratio';
-        const goalMin = isRatio ? Number(g.min) / (Number(g.minLeft) || 1) : Number(g.min);
-        const goalMax = isRatio ? Number(g.max) / (Number(g.maxLeft) || 1) : Number(g.max);
+        const rMin = Number(g.min), rMax = Number(g.max);
+        const goalMin = isRatio ? (rMin === 0 ? 0 : Number(g.minLeft) / rMin) : Number(g.min);
+        const goalMax = isRatio ? (rMax === 0 ? 0 : Number(g.maxLeft) / rMax) : Number(g.max);
         return { category_id: categoryId, parameter_id: paramId, goal_min: goalMin, goal_max: goalMax };
       });
       if (goalInserts.length) {
