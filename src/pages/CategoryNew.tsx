@@ -268,7 +268,7 @@ export function CategoryNew() {
                               <input
                                 type="number"
                                 placeholder="1"
-                                className="w-12 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
                                 value={selectedParams[p.id].minLeft}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], minLeft: e.target.value } }))}
                               />
@@ -276,7 +276,7 @@ export function CategoryNew() {
                               <input
                                 type="number"
                                 placeholder="0"
-                                className={`w-12 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                className={`w-16 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                 value={selectedParams[p.id].min}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], min: e.target.value } }))}
                               />
@@ -298,7 +298,7 @@ export function CategoryNew() {
                               <input
                                 type="number"
                                 placeholder="1"
-                                className="w-12 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
                                 value={selectedParams[p.id].maxLeft}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], maxLeft: e.target.value } }))}
                               />
@@ -306,7 +306,7 @@ export function CategoryNew() {
                               <input
                                 type="number"
                                 placeholder="0"
-                                className={`w-12 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                className={`w-16 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                 value={selectedParams[p.id].max}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], max: e.target.value } }))}
                               />
