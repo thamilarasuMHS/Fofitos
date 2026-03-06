@@ -641,9 +641,11 @@ export function RecipeDetail() {
                             isRatio ? '' : 'g';
                           const decimals = param.name === 'Sodium' ? 0 : 2;
 
+                          // Actual ratio displayed as numerator:denominator (raw amounts).
+                          // Goal stored as normalizedRatio = second/first; shown as "1:storedValue".
                           const displayActual   = actual != null ? (isRatio ? `${scN.toFixed(2)}:${scD.toFixed(2)}` : actual.toFixed(decimals)) : '—';
-                          const displayGoalMin  = isRatio ? `${g.goal_min}:1` : String(g.goal_min);
-                          const displayGoalMax  = isRatio ? `${g.goal_max}:1` : String(g.goal_max);
+                          const displayGoalMin  = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
+                          const displayGoalMax  = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
 
                           /* Is actual within goal range? */
                           const withinRange = actual != null && actual >= g.goal_min && actual <= g.goal_max;

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { NutritionParameter, ComponentLibrary, CategoryGoal, CategoryComponent } from '@/types/database';
+import { normalizeDisplayedRatio, isRatioRangeValid } from '@/utils/ratioUtils';
 
 export function CategoryEdit() {
   const { categoryId }  = useParams<{ categoryId: string }>();
@@ -73,14 +74,17 @@ export function CategoryEdit() {
     // Name
     setName(category.name ?? '');
 
-    // Nutrition goals — keyed by parameter_id
+    // Nutrition goals — keyed by parameter_id.
+    // Stored value = normalizedRatio = second/first. We show it as "1 : storedValue",
+    // so left (first) = '1' and right (second/min) = storedValue.
+    // On re-save: normalizeDisplayedRatio(1, storedValue) = storedValue ✓ (round-trip safe).
     const paramMap: Record<string, { min: string; max: string; minLeft: string; maxLeft: string }> = {};
     for (const g of goals) {
       paramMap[g.parameter_id] = {
-        minLeft: g.goal_min != null ? String(g.goal_min) : '',
-        min: '1',
-        maxLeft: g.goal_max != null ? String(g.goal_max) : '',
-        max: '1',
+        minLeft: '1',
+        min:     g.goal_min != null ? String(g.goal_min) : '',
+        maxLeft: '1',
+        max:     g.goal_max != null ? String(g.goal_max) : '',
       };
     }
     setSelectedParams(paramMap);
@@ -130,16 +134,22 @@ export function CategoryEdit() {
   );
   const hasParamErrors = Object.values(paramErrors).some((e) => e.min || e.max);
 
-  // Range check: computed goalMin must be ≤ goalMax (formula: left / right)
+  // Range check: normalizedMin must be ≤ normalizedMax.
+  // Business rule: for ratio A:B, normalizedRatio = B/A (second ÷ first).
   const rangeErrors = Object.entries(selectedParams).reduce<Record<string, boolean>>(
     (acc, [id, v]) => {
       if (v.min === '' || v.max === '') return acc;
       const param = parameters?.find((p) => p.id === id);
       const isRatio = param?.param_type === 'ratio';
-      const rMin = Number(v.min), rMax = Number(v.max);
-      const goalMin = isRatio ? (rMin === 0 ? 0 : Number(v.minLeft) / rMin) : Number(v.min);
-      const goalMax = isRatio ? (rMax === 0 ? 0 : Number(v.maxLeft) / rMax) : Number(v.max);
-      if (goalMin > goalMax) acc[id] = true;
+      if (isRatio) {
+        const valid = isRatioRangeValid(
+          Number(v.minLeft), Number(v.min),
+          Number(v.maxLeft), Number(v.max),
+        );
+        if (!valid) acc[id] = true;
+      } else {
+        if (Number(v.min) > Number(v.max)) acc[id] = true;
+      }
       return acc;
     }, {}
   );
@@ -179,14 +189,18 @@ export function CategoryEdit() {
         .eq('id', categoryId);
       if (catErr) throw catErr;
 
-      // 2. Replace nutrition goals
+      // 2. Replace nutrition goals.
+      //    Ratio storage: normalizedRatio = second / first (B / A).
       await supabase.from('category_goals').delete().eq('category_id', categoryId);
       const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => {
         const param = parameters?.find((p) => p.id === paramId);
         const isRatio = param?.param_type === 'ratio';
-        const rMin = Number(g.min), rMax = Number(g.max);
-        const goalMin = isRatio ? (rMin === 0 ? 0 : Number(g.minLeft) / rMin) : Number(g.min);
-        const goalMax = isRatio ? (rMax === 0 ? 0 : Number(g.maxLeft) / rMax) : Number(g.max);
+        const goalMin = isRatio
+          ? (normalizeDisplayedRatio(Number(g.minLeft), Number(g.min)) ?? 0)
+          : Number(g.min);
+        const goalMax = isRatio
+          ? (normalizeDisplayedRatio(Number(g.maxLeft), Number(g.max)) ?? 0)
+          : Number(g.max);
         return { category_id: categoryId, parameter_id: paramId, goal_min: goalMin, goal_max: goalMax };
       });
       if (goalInserts.length) {

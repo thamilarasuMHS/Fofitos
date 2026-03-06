@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { NutritionParameter, ComponentLibrary } from '@/types/database';
+import { normalizeDisplayedRatio, isRatioRangeValid } from '@/utils/ratioUtils';
 
 export function CategoryNew() {
   const navigate = useNavigate();
@@ -70,16 +71,22 @@ export function CategoryNew() {
   );
   const hasParamErrors = Object.values(paramErrors).some((e) => e.min || e.max);
 
-  // Range check: computed goalMin must be ≤ goalMax (formula: left / right)
+  // Range check: normalizedMin must be ≤ normalizedMax.
+  // Business rule: for ratio A:B, normalizedRatio = B/A (second ÷ first).
   const rangeErrors = Object.entries(selectedParams).reduce<Record<string, boolean>>(
     (acc, [id, v]) => {
       if (v.min === '' || v.max === '') return acc;
       const param = parameters?.find((p) => p.id === id);
       const isRatio = param?.param_type === 'ratio';
-      const rMin = Number(v.min), rMax = Number(v.max);
-      const goalMin = isRatio ? (rMin === 0 ? 0 : Number(v.minLeft) / rMin) : Number(v.min);
-      const goalMax = isRatio ? (rMax === 0 ? 0 : Number(v.maxLeft) / rMax) : Number(v.max);
-      if (goalMin > goalMax) acc[id] = true;
+      if (isRatio) {
+        const valid = isRatioRangeValid(
+          Number(v.minLeft), Number(v.min),
+          Number(v.maxLeft), Number(v.max),
+        );
+        if (!valid) acc[id] = true;
+      } else {
+        if (Number(v.min) > Number(v.max)) acc[id] = true;
+      }
       return acc;
     }, {}
   );
@@ -143,13 +150,18 @@ export function CategoryNew() {
         if (compErr) throw compErr;
       }
 
-      /* Insert selected nutrition goals */
+      /* Insert selected nutrition goals.
+         Ratio storage: normalizedRatio = second / first (B / A).
+         We store the normalised scalar; display uses "1:storedValue" format. */
       const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => {
         const param = parameters?.find((p) => p.id === paramId);
         const isRatio = param?.param_type === 'ratio';
-        const rMin = Number(g.min), rMax = Number(g.max);
-        const goalMin = isRatio ? (rMin === 0 ? 0 : Number(g.minLeft) / rMin) : Number(g.min);
-        const goalMax = isRatio ? (rMax === 0 ? 0 : Number(g.maxLeft) / rMax) : Number(g.max);
+        const goalMin = isRatio
+          ? (normalizeDisplayedRatio(Number(g.minLeft), Number(g.min)) ?? 0)
+          : Number(g.min);
+        const goalMax = isRatio
+          ? (normalizeDisplayedRatio(Number(g.maxLeft), Number(g.max)) ?? 0)
+          : Number(g.max);
         return { category_id: cat.id, parameter_id: paramId, goal_min: goalMin, goal_max: goalMax };
       });
       if (goalInserts.length) {
