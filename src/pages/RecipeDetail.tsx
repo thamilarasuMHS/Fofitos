@@ -143,13 +143,18 @@ export function RecipeDetail() {
       if (param.param_type === 'absolute') {
         actual = totals[nameToKey[param.name] ?? 'protein_g'] ?? 0;
       } else {
+        // Ratio parameter.
+        // Goals are stored as normalizedRatio = second/first = denominator/numerator (B/A).
+        // So actual must also be denominator/numerator to compare correctly.
+        // Example — Protein:Carb goals stored as Carb/Protein ∈ [1, 2.5]:
+        //   actual = carbs_g / protein_g  →  valid when 1 ≤ actual ≤ 2.5
         const numParam = parameters.find((p) => p.id === param.numerator_param_id);
         const denParam = parameters.find((p) => p.id === param.denominator_param_id);
         const numKey = numParam ? nameToKey[numParam.name] : null;
         const denKey = denParam ? nameToKey[denParam.name] : null;
         const n = numKey ? totals[numKey] ?? 0 : 0;
         const d = denKey ? totals[denKey] ?? 0 : 0;
-        actual = d ? n / d : 0;
+        actual = n > 0 ? d / n : 0;   // denominator ÷ numerator = B/A
       }
       scores[param.id] = scoreParameter(actual, g.goal_min, g.goal_max, param.direction);
     }
@@ -624,13 +629,17 @@ export function RecipeDetail() {
                               const k = nameToKey[param.name];
                               actual = k != null ? (totals[k] ?? null) : null;
                             } else {
+                              // Ratio parameter.
+                              // scN = numerator total (first label, e.g. Protein)
+                              // scD = denominator total (second label, e.g. Carb)
+                              // Goals stored as B/A = second/first = scD/scN, so actual must match.
                               const numP = parameters.find((p) => p.id === param.numerator_param_id);
                               const denP = parameters.find((p) => p.id === param.denominator_param_id);
                               const nk = numP ? nameToKey[numP.name] : null;
                               const dk = denP ? nameToKey[denP.name] : null;
                               scN = nk ? (totals[nk] ?? 0) : 0;
                               scD = dk ? (totals[dk] ?? 0) : 0;
-                              actual = scD ? scN / scD : null;
+                              actual = scN > 0 ? scD / scN : null; // B/A = denominator ÷ numerator
                             }
                           }
 
@@ -641,14 +650,20 @@ export function RecipeDetail() {
                             isRatio ? '' : 'g';
                           const decimals = param.name === 'Sodium' ? 0 : 2;
 
-                          // Actual ratio displayed as numerator:denominator (raw amounts).
-                          // Goal stored as normalizedRatio = second/first; shown as "1:storedValue".
+                          // Display actual as numerator:denominator (raw amounts, e.g. "20.00:40.00")
+                          // Goals displayed as "1:stored" (e.g. "1:1" – "1:2.5")
                           const displayActual   = actual != null ? (isRatio ? `${scN.toFixed(2)}:${scD.toFixed(2)}` : actual.toFixed(decimals)) : '—';
                           const displayGoalMin  = isRatio ? `1:${g.goal_min}` : String(g.goal_min);
                           const displayGoalMax  = isRatio ? `1:${g.goal_max}` : String(g.goal_max);
 
-                          /* Is actual within goal range? */
+                          /* Is actual within goal range?
+                             actual = scD/scN (B/A direction); goals stored in same direction. */
                           const withinRange = actual != null && actual >= g.goal_min && actual <= g.goal_max;
+
+                          /* Human-readable validation hint shown when out of range */
+                          const rangeHint = isRatio && actual != null && !withinRange
+                            ? `${param.name} ratio must be between ${displayGoalMin} and ${displayGoalMax}`
+                            : null;
 
                           return (
                             <tr key={g.id} className="hover:bg-gray-50/50 transition-colors border-b border-gray-50 last:border-0">
@@ -664,6 +679,11 @@ export function RecipeDetail() {
                                   {displayActual}
                                 </span>
                                 {unit && <span className="text-xs text-gray-400 ml-0.5">{unit}</span>}
+                                {rangeHint && (
+                                  <p className="text-[10px] text-red-500 font-medium mt-0.5 leading-tight">
+                                    ⚠ {rangeHint}
+                                  </p>
+                                )}
                               </td>
 
                               {/* Goal range */}
