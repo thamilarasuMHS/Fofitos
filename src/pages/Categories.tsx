@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -41,18 +41,27 @@ export function Categories() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [page, setPage]               = useState(0);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [page, setPage]                     = useState(0);
+  const [statusFilter, setStatusFilter]     = useState<StatusFilter>('all');
+  const [search, setSearch]                 = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  /* Debounce search — 300 ms */
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  /* Reset to page 0 whenever search or filter changes */
+  useEffect(() => { setPage(0); }, [debouncedSearch, statusFilter]);
 
   /* ── Delete mutation ───────────────────────────────────────────────────── */
   const deleteCategory = useMutation({
     mutationFn: async (categoryId: string) => {
-      // Get all recipe IDs for this category
       const { data: recipes } = await supabase
         .from('recipes').select('id').eq('category_id', categoryId);
       const recipeIds = (recipes ?? []).map((r: { id: string }) => r.id);
 
-      // Delete in FK-safe order
       if (recipeIds.length > 0) {
         await supabase.from('recipe_ingredients').delete().in('recipe_id', recipeIds);
         await supabase.from('recipe_versions').delete().in('recipe_id', recipeIds);
@@ -72,9 +81,9 @@ export function Categories() {
     },
   });
 
-  /* ── Paginated data query ─────────────────────────────────────────────── */
+  /* ── Paginated + filtered + searched data query ───────────────────────── */
   const { data, isLoading } = useQuery({
-    queryKey: ['categories', page, statusFilter, profile?.id, profile?.role],
+    queryKey: ['categories', page, statusFilter, debouncedSearch, profile?.id, profile?.role],
     queryFn: async () => {
       let q = supabase
         .from('categories')
@@ -92,6 +101,10 @@ export function Categories() {
         q = q.eq('status', statusFilter);
       }
 
+      if (debouncedSearch) {
+        q = q.ilike('name', `%${debouncedSearch}%`);
+      }
+
       const { data: rows, error, count } = await q;
       if (error) throw error;
       return { rows: (rows ?? []) as Category[], total: count ?? 0 };
@@ -100,15 +113,18 @@ export function Categories() {
     placeholderData: (prev) => prev,
   });
 
-  /* ── Status counts query (for tab badges) ─────────────────────────────── */
+  /* ── Status counts (respects search filter for accurate tab badges) ────── */
   const { data: statusRows } = useQuery({
-    queryKey: ['categories_statuses', profile?.id, profile?.role],
+    queryKey: ['categories_statuses', debouncedSearch, profile?.id, profile?.role],
     queryFn: async () => {
       let q = supabase.from('categories').select('status');
       if (profile?.role === 'manager') {
         q = q.or(`created_by.eq.${profile.id},status.eq.approved`);
       } else if (profile?.role !== 'admin') {
         q = q.eq('status', 'approved');
+      }
+      if (debouncedSearch) {
+        q = q.ilike('name', `%${debouncedSearch}%`);
       }
       const { data, error } = await q;
       if (error) throw error;
@@ -147,7 +163,7 @@ export function Categories() {
 
   const rows       = data?.rows ?? [];
   const total      = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const canCreate  = profile?.role === 'admin' || profile?.role === 'manager';
 
   const TABS: { id: StatusFilter; label: string; count: number }[] = [
@@ -182,11 +198,12 @@ export function Categories() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Categories</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {counts.all} {counts.all === 1 ? 'category' : 'categories'}
+            {total} {total === 1 ? 'category' : 'categories'}
+            {debouncedSearch && <span className="text-violet-600"> matching "{debouncedSearch}"</span>}
           </p>
         </div>
         {canCreate && (
@@ -199,29 +216,59 @@ export function Categories() {
         )}
       </div>
 
+      {/* Search bar */}
+      <div className="mb-4">
+        <div className="relative max-w-sm">
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+            fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+          >
+            <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" strokeLinecap="round" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search categories…"
+            className="input pl-9 pr-8 w-full"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              onClick={() => setSearch('')}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Filter tabs — horizontally scrollable on mobile */}
       <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-      <div className="flex gap-1 border-b border-gray-200 mb-5 min-w-max md:min-w-0">
-        {TABS.filter((t) => t.id === 'all' || t.count > 0).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => handleFilterChange(t.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              statusFilter === t.id
-                ? 'border-violet-600 text-violet-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t.label}
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-              statusFilter === t.id ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'
-            }`}>
-              {t.count}
-            </span>
-          </button>
-        ))}
-      </div>
+        <div className="flex gap-1 border-b border-gray-200 mb-5 min-w-max md:min-w-0">
+          {TABS.filter((t) => t.id === 'all' || t.count > 0).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => handleFilterChange(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                statusFilter === t.id
+                  ? 'border-violet-600 text-violet-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                statusFilter === t.id ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Empty state */}
@@ -232,16 +279,28 @@ export function Categories() {
               <path d="M3 7a2 2 0 012-2h3l2 2h9a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             </svg>
           </div>
-          <p className="text-gray-500 font-medium">No categories found</p>
-          <p className="text-gray-400 text-sm mt-1">
-            {statusFilter === 'all'
-              ? 'Create your first category to get started.'
-              : `No ${statusFilter.replace('_', ' ')} categories.`}
-          </p>
-          {canCreate && statusFilter === 'all' && (
-            <Link to="/categories/new" className="btn-primary mt-5 inline-flex">
-              Create first category
-            </Link>
+          {debouncedSearch ? (
+            <>
+              <p className="text-gray-500 font-medium">No results for "{debouncedSearch}"</p>
+              <p className="text-gray-400 text-sm mt-1">Try a different search term.</p>
+              <button type="button" className="btn-secondary mt-5 inline-flex" onClick={() => setSearch('')}>
+                Clear search
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-500 font-medium">No categories found</p>
+              <p className="text-gray-400 text-sm mt-1">
+                {statusFilter === 'all'
+                  ? 'Create your first category to get started.'
+                  : `No ${statusFilter.replace('_', ' ')} categories.`}
+              </p>
+              {canCreate && statusFilter === 'all' && (
+                <Link to="/categories/new" className="btn-primary mt-5 inline-flex">
+                  Create first category
+                </Link>
+              )}
+            </>
           )}
         </div>
       ) : (
@@ -353,35 +412,79 @@ export function Categories() {
             </table>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 px-1">
-              <p className="text-sm text-gray-500">
-                Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary py-1.5 px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  ← Previous
-                </button>
-                <span className="text-sm text-gray-500 px-1">
-                  Page {page + 1} of {totalPages}
-                </span>
-                <button
-                  type="button"
-                  className="btn-secondary py-1.5 px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next →
-                </button>
-              </div>
+          {/* Pagination — always visible when there are rows */}
+          <div className="flex items-center justify-between mt-4 px-1">
+            <p className="text-sm text-gray-500">
+              {total === 0
+                ? 'No results'
+                : `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} of ${total}`}
+            </p>
+            <div className="flex items-center gap-1">
+              {/* First page */}
+              <button
+                type="button"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-bold"
+                disabled={page === 0}
+                onClick={() => setPage(0)}
+                title="First page"
+              >
+                «
+              </button>
+              {/* Previous */}
+              <button
+                type="button"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                disabled={page === 0}
+                onClick={() => setPage((p) => p - 1)}
+                title="Previous page"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+
+              {/* Page number buttons */}
+              {Array.from({ length: totalPages }, (_, i) => i)
+                .filter((i) => Math.abs(i - page) <= 2)
+                .map((i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setPage(i)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                      i === page
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+
+              {/* Next */}
+              <button
+                type="button"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+                title="Next page"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {/* Last page */}
+              <button
+                type="button"
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-bold"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage(totalPages - 1)}
+                title="Last page"
+              >
+                »
+              </button>
             </div>
-          )}
+          </div>
         </>
       )}
     </div>
