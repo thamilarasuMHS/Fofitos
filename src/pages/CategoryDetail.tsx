@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { formatStoredRatio, ratioDisplayOrder } from '@/utils/ratioUtils';
 import { useAuth } from '@/hooks/useAuth';
 import type {
   Category, CategoryGoal, CategoryComponent,
@@ -145,20 +146,23 @@ export function CategoryDetail() {
     return recipeVersions?.find((v) => v.recipe_id === recipeId);
   }
 
-  /* Profiles (creator + approver) */
+  /* Profiles (creator + approver)                                           */
+  /* Use get_all_profiles() RPC (SECURITY DEFINER) so managers/dieticians   */
+  /* can also resolve admin profile names — the direct table query is        */
+  /* blocked by RLS for non-admin roles.                                     */
   const { data: profiles } = useQuery({
     queryKey: ['profiles_list'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, full_name, email, role');
+      const { data, error } = await supabase.rpc('get_all_profiles');
       if (error) throw error;
       return data as Pick<Profile, 'id' | 'full_name' | 'email' | 'role'>[];
     },
   });
 
-  function resolveUser(id: string | null | undefined) {
+  function resolveUser(id: string | null | undefined): string | null {
     if (!id) return null;
     const p = profiles?.find((p) => p.id === id);
-    return p ? (p.full_name || p.email || id) : id.slice(0, 8) + '…';
+    return p ? (p.full_name || p.email || null) : null;
   }
 
   /* ── Mutations ──────────────────────────────────────────────────────────── */
@@ -327,12 +331,18 @@ export function CategoryDetail() {
           <div className="mt-5 pt-4 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-6 gap-y-3">
             <div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Created By</p>
-              <div className="flex items-center gap-1.5">
-                <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center text-[10px] font-bold text-violet-700 shrink-0">
-                  {(resolveUser(category.created_by)?.[0] ?? '?').toUpperCase()}
-                </div>
-                <span className="text-xs text-gray-700 font-medium">{resolveUser(category.created_by)}</span>
-              </div>
+              {(() => {
+                const name = resolveUser(category.created_by);
+                if (!name) return <p className="text-xs text-gray-700">—</p>;
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full bg-violet-100 flex items-center justify-center text-[10px] font-bold text-violet-700 shrink-0">
+                      {name[0].toUpperCase()}
+                    </div>
+                    <span className="text-xs text-gray-700 font-medium">{name}</span>
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Created On</p>
@@ -352,16 +362,18 @@ export function CategoryDetail() {
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">
                 {category.status === 'rejected' ? 'Rejected By' : 'Approved By'}
               </p>
-              {category.approved_by ? (
-                <div className="flex items-center gap-1.5">
-                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-[10px] font-bold text-green-700 shrink-0">
-                    {(resolveUser(category.approved_by)?.[0] ?? '?').toUpperCase()}
+              {(() => {
+                const name = resolveUser(category.approved_by);
+                if (!name) return <p className="text-xs text-gray-700">—</p>;
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-[10px] font-bold text-green-700 shrink-0">
+                      {name[0].toUpperCase()}
+                    </div>
+                    <span className="text-xs text-gray-700 font-medium">{name}</span>
                   </div>
-                  <span className="text-xs text-gray-700 font-medium">{resolveUser(category.approved_by)}</span>
-                </div>
-              ) : (
-                <p className="text-xs text-gray-700">—</p>
-              )}
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -410,10 +422,14 @@ export function CategoryDetail() {
                           )}
                         </td>
                         <td className="td text-center text-gray-700 font-medium">
-                          {param?.unit === 'ratio' ? `${g.goal_min}:1` : g.goal_min}
+                          {param?.unit === 'ratio'
+                            ? formatStoredRatio(ratioDisplayOrder(g.goal_min, g.goal_max).displayMin)
+                            : g.goal_min}
                         </td>
                         <td className="td text-center text-gray-700 font-medium">
-                          {param?.unit === 'ratio' ? `${g.goal_max}:1` : g.goal_max}
+                          {param?.unit === 'ratio'
+                            ? formatStoredRatio(ratioDisplayOrder(g.goal_min, g.goal_max).displayMax)
+                            : g.goal_max}
                         </td>
                         <td className="td text-center">
                           <span className="badge bg-gray-50 text-gray-500 text-[10px]">

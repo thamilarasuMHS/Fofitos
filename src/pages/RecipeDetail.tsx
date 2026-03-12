@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { formatStoredRatio, ratioDisplayOrder } from '@/utils/ratioUtils';
 import { useAuth } from '@/hooks/useAuth';
 import { computeTotals, overallScore, scoreParameter, getScoreColor } from '@/lib/scoring';
 import { downloadRecipePdf } from '@/lib/pdfExport';
@@ -205,10 +206,10 @@ export function RecipeDetail() {
       const missing = ingredients.some((i) =>
         NUTRIENT_KEYS.some((k) => {
           const v = (i as unknown as Record<string, unknown>)[k];
-          return v == null || Number(v) <= 0;
+          return v == null;
         })
       );
-      if (missing) throw new Error('All nutrition values for every ingredient must be filled in and greater than 0 before submitting.');
+      if (missing) throw new Error('All nutrition values for every ingredient must be filled in before submitting.');
       const { error } = await supabase
         .from('recipe_versions')
         .update({ status: 'submitted', submitted_at: new Date().toISOString() })
@@ -263,6 +264,9 @@ export function RecipeDetail() {
 
   const canEdit = currentVersion?.status === 'draft' && !currentVersion?.locked &&
     (profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'dietician');
+  const canCreateVersion =
+    (profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'dietician') &&
+    currentVersion?.status === 'approved';
   const canDownloadPdf   = profile?.role === 'admin' || profile?.role === 'manager';
   const canApproveRecipe = (profile?.role === 'admin' || profile?.role === 'manager') && currentVersion?.status === 'submitted';
   const canRequestDeletion = profile?.role === 'manager' && recipe;
@@ -396,6 +400,19 @@ export function RecipeDetail() {
                 Create new version
               </button>
             )}
+            {canCreateVersion && (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                onClick={() => createVersion.mutate()}
+                disabled={createVersion.isPending}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                {createVersion.isPending ? 'Creating…' : 'Edit (New Version)'}
+              </button>
+            )}
           </>
         )}
       </div>
@@ -461,68 +478,59 @@ export function RecipeDetail() {
       {activeTab === 'nutrition' && totals && (
         <div className="mt-5">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {goals && parameters && goals.length > 0 ? (
-              goals.map((g) => {
-                const param = parameters.find((p) => p.id === g.parameter_id);
-                if (!param) return null;
 
-                /* Compute actual value */
-                let value: number | null = null;
-                let ratioN = 0, ratioD = 0;
-                if (param.param_type === 'absolute') {
-                  const k = nameToKey[param.name];
-                  value = k != null ? (totals[k] ?? null) : null;
-                } else {
-                  const numParam = parameters.find((p) => p.id === param.numerator_param_id);
-                  const denParam = parameters.find((p) => p.id === param.denominator_param_id);
-                  const nk = numParam ? nameToKey[numParam.name] : null;
-                  const dk = denParam ? nameToKey[denParam.name] : null;
-                  ratioN = nk ? (totals[nk] ?? 0) : 0;
-                  ratioD = dk ? (totals[dk] ?? 0) : 0;
-                  value = ratioD ? ratioN / ratioD : null;
-                }
-
-                /* Unit label */
-                const isRatio = param.param_type === 'ratio';
-                const unit =
-                  param.name === 'Calories' ? 'kcal' :
-                  param.name === 'Sodium'   ? 'mg'   :
-                  isRatio ? '' : 'g';
-
-                /* Decimals */
-                const decimals = param.name === 'Sodium' ? 0 : 2;
-
-                /* Format helpers */
-                const displayValue   = value  != null ? (isRatio ? `${ratioN.toFixed(2)}:${ratioD.toFixed(2)}` : value.toFixed(decimals)) : '—';
-                const displayGoalMin = isRatio ? `${g.goal_min}:1` : String(g.goal_min);
-                const displayGoalMax = isRatio ? `${g.goal_max}:1` : String(g.goal_max);
-
-                return (
-                  <div key={g.id} className="card p-4">
-                    <p className="text-xs font-medium text-gray-500 mb-1">{param.name}</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {displayValue}
-                      {unit && <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>}
-                    </p>
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      Goal: {displayGoalMin} – {displayGoalMax}
-                      {unit && <span className="ml-0.5">{unit}</span>}
-                    </p>
-                  </div>
-                );
-              })
-            ) : (
-              /* Fallback: show all 9 totals if goals not loaded */
-              NUTR_FIELDS.map(({ key, label, unit }) => (
+            {/* ── Standard (absolute) nutrient cards — always shown ── */}
+            {NUTR_FIELDS.map(({ key, label, unit }) => {
+              const param    = parameters?.find((p) => p.name === label && p.param_type === 'absolute');
+              const goal     = param && goals ? goals.find((g) => g.parameter_id === param.id) : null;
+              const value    = totals[key];
+              const decimals = key === 'sodium_mg' ? 0 : 1;
+              return (
                 <div key={key} className="card p-4">
                   <p className="text-xs font-medium text-gray-500 mb-1">{label}</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {totals[key].toFixed(key === 'sodium_mg' ? 0 : 1)}
+                    {value.toFixed(decimals)}
                     <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>
                   </p>
+                  {goal && (
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Goal: {goal.goal_min} – {goal.goal_max}
+                      <span className="ml-0.5">{unit}</span>
+                    </p>
+                  )}
                 </div>
-              ))
-            )}
+              );
+            })}
+
+            {/* ── Ratio parameter cards — always shown when parameters loaded ── */}
+            {parameters?.filter((p) => p.param_type === 'ratio').map((param) => {
+              const numParam = parameters.find((p) => p.id === param.numerator_param_id);
+              const denParam = parameters.find((p) => p.id === param.denominator_param_id);
+              const nk = numParam ? nameToKey[numParam.name] : null;
+              const dk = denParam ? nameToKey[denParam.name] : null;
+              if (!nk || !dk) return null;
+              const rN = totals[nk] ?? 0;
+              const rD = totals[dk] ?? 0;
+              const goal = goals?.find((g) => g.parameter_id === param.id);
+              const displayValue = rD > 0 ? `${rN.toFixed(2)}:${rD.toFixed(2)}` : '—';
+              const { displayMin: rdMin, displayMax: rdMax } = goal
+                ? ratioDisplayOrder(goal.goal_min, goal.goal_max)
+                : { displayMin: null, displayMax: null };
+              return (
+                <div key={param.id} className="card p-4">
+                  <p className="text-xs font-medium text-gray-500 mb-1">{param.name}</p>
+                  <p className="text-2xl font-bold text-gray-900">{displayValue}</p>
+                  {goal ? (
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Goal: {formatStoredRatio(rdMin)} – {formatStoredRatio(rdMax)}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-gray-400 mt-1">No goal set</p>
+                  )}
+                </div>
+              );
+            })}
+
           </div>
         </div>
       )}
@@ -530,7 +538,7 @@ export function RecipeDetail() {
       {/* ── Scoring tab ─────────────────────────────────────────────────────── */}
       {activeTab === 'scoring' && (
         <div className="mt-5 space-y-5">
-          {/* Empty / loading state */}
+          {/* Loading state — data not yet fetched */}
           {(!parameterScores || overall == null || !goals || !parameters) && (
             <div className="card p-10 text-center">
               <svg className="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -540,7 +548,18 @@ export function RecipeDetail() {
             </div>
           )}
 
-          {parameterScores && overall != null && goals && parameters && (() => {
+          {/* No goals configured — prompt user to edit category */}
+          {parameterScores && overall != null && goals && parameters && goals.length === 0 && (
+            <div className="card p-10 text-center">
+              <svg className="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"/>
+              </svg>
+              <p className="text-gray-700 text-sm font-medium mb-1">No nutrition goals configured</p>
+              <p className="text-gray-400 text-xs">Edit this category to add Min/Max goals for each parameter, then scoring will appear here.</p>
+            </div>
+          )}
+
+          {parameterScores && overall != null && goals && parameters && goals.length > 0 && (() => {
             const overallColor = getScoreColor(overall);
             const overallLabel =
               overallColor === 'green'  ? 'Excellent' :
@@ -586,7 +605,7 @@ export function RecipeDetail() {
                         />
                       </div>
                       <p className="text-xs text-gray-400 mt-2 text-right">
-                        {goals.length} parameter{goals.length !== 1 ? 's' : ''} evaluated
+                        {Object.keys(parameterScores).length} parameter{Object.keys(parameterScores).length !== 1 ? 's' : ''} evaluated
                       </p>
                     </div>
                   </div>
@@ -651,10 +670,11 @@ export function RecipeDetail() {
                           const decimals = param.name === 'Sodium' ? 0 : 2;
 
                           // Display actual as numerator:denominator (raw amounts, e.g. "40.00:10.00" = Carb:Fibre)
-                          // Goals displayed as "stored:1" (e.g. "1:1" – "4:1" for Carb:Fibre)
+                          // Goals displayed via formatStoredRatio + ratioDisplayOrder to restore correct Min/Max labels
+                          const { displayMin: rdMin2, displayMax: rdMax2 } = isRatio ? ratioDisplayOrder(g.goal_min, g.goal_max) : { displayMin: null, displayMax: null };
                           const displayActual   = actual != null ? (isRatio ? `${scN.toFixed(2)}:${scD.toFixed(2)}` : actual.toFixed(decimals)) : '—';
-                          const displayGoalMin  = isRatio ? `${g.goal_min}:1` : String(g.goal_min);
-                          const displayGoalMax  = isRatio ? `${g.goal_max}:1` : String(g.goal_max);
+                          const displayGoalMin  = isRatio ? formatStoredRatio(rdMin2) : String(g.goal_min);
+                          const displayGoalMax  = isRatio ? formatStoredRatio(rdMax2) : String(g.goal_max);
 
                           /* Is actual within goal range?
                              actual = scD/scN (B/A direction); goals stored in same direction. */
@@ -1520,7 +1540,27 @@ function ComponentIngredientCard({
                   type="number" step="any" min="0"
                   className="input"
                   value={editForm.quantity_g ?? ''}
-                  onChange={(e) => setEditForm((f) => ({ ...f, quantity_g: e.target.value }))}
+                  onChange={(e) => {
+                    const newQty   = Number(e.target.value);
+                    const origQty  = editingIng.quantity_g;          // original saved qty
+                    if (newQty > 0 && origQty > 0) {
+                      const scale = newQty / origQty;
+                      setEditForm((f) => {
+                        const updated: Record<string, string> = { ...f, quantity_g: e.target.value };
+                        for (const k of NUTRIENT_KEYS) {
+                          // Scale from the original ingredient's stored values, not the current form
+                          const origVal = (editingIng as unknown as Record<string, unknown>)[k];
+                          updated[k] = origVal != null
+                            ? (Number(origVal) * scale).toFixed(2)
+                            : f[k];           // keep manual value if original was null
+                        }
+                        return updated;
+                      });
+                    } else {
+                      // qty is 0 or empty — just update the field, don't touch nutrition
+                      setEditForm((f) => ({ ...f, quantity_g: e.target.value }));
+                    }
+                  }}
                 />
               </div>
               <div>

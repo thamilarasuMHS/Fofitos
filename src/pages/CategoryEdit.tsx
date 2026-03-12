@@ -75,16 +75,39 @@ export function CategoryEdit() {
     setName(category.name ?? '');
 
     // Nutrition goals — keyed by parameter_id.
-    // Stored value = normalizedRatio = first/second (A/B). We show it as "storedValue : 1",
-    // so left (first/minLeft) = storedValue and right (second/min) = '1'.
-    // On re-save: normalizeDisplayedRatio(storedValue, 1) = storedValue/1 = storedValue ✓ (round-trip safe).
+    // Stored value = normalizedRatio = first/second (A/B).
+    //
+    // Pre-fill uses ratioDisplayOrder to restore correct Min/Max labels:
+    //   When goal_min < 1 AND goal_max ≥ 1 (e.g. Protein:Carb: 0.4 and 1),
+    //   the scalar sort during save inverted the labels — swap back so the
+    //   Min input shows the user's original Min entry (e.g. "1:1") and the
+    //   Max input shows the user's original Max entry (e.g. "1:2.5").
+    //
+    // ratioToInputs conversion:
+    //   stored ≥ 1  →  left=stored, right=1      (e.g. 4  → "4 : 1")
+    //   stored < 1  →  left=1, right=1/stored     (e.g. 0.4 → "1 : 2.5")
+    // Round-trip on re-save is exact:
+    //   stored ≥ 1: normalizeDisplayedRatio(stored, 1) = stored/1 = stored ✓
+    //   stored < 1: normalizeDisplayedRatio(1, 1/stored) = 1/(1/stored) = stored ✓
+    function ratioToInputs(stored: number | null): { left: string; right: string } {
+      if (stored == null) return { left: '1', right: '' };
+      if (stored >= 1) return { left: String(stored), right: '1' };
+      const inv = parseFloat((1 / stored).toFixed(6));
+      return { left: '1', right: String(inv) };
+    }
     const paramMap: Record<string, { min: string; max: string; minLeft: string; maxLeft: string }> = {};
     for (const g of goals) {
+      // Determine which stored value is the semantic Min and which is the semantic Max
+      const isInverted = g.goal_min != null && g.goal_max != null && g.goal_min < 1 && g.goal_max >= 1;
+      const semanticMin = isInverted ? g.goal_max : g.goal_min;
+      const semanticMax = isInverted ? g.goal_min : g.goal_max;
+      const minInputs = ratioToInputs(semanticMin);
+      const maxInputs = ratioToInputs(semanticMax);
       paramMap[g.parameter_id] = {
-        minLeft: g.goal_min != null ? String(g.goal_min) : '',
-        min:     '1',
-        maxLeft: g.goal_max != null ? String(g.goal_max) : '',
-        max:     '1',
+        minLeft: minInputs.left,
+        min:     minInputs.right,
+        maxLeft: maxInputs.left,
+        max:     maxInputs.right,
       };
     }
     setSelectedParams(paramMap);
@@ -134,8 +157,8 @@ export function CategoryEdit() {
   );
   const hasParamErrors = Object.values(paramErrors).some((e) => e.min || e.max);
 
-  // Range check: normalizedMin must be ≤ normalizedMax.
-  // Business rule: for ratio A:B, normalizedRatio = B/A (second ÷ first).
+  // Range check: both components must be non-decreasing (minLeft ≤ maxLeft AND minRight ≤ maxRight).
+  // This handles left-increases (Carb:Fibre 1:1→4:1), right-increases (Protein:Carb 1:1→1:2.5), and rejects reversals.
   const rangeErrors = Object.entries(selectedParams).reduce<Record<string, boolean>>(
     (acc, [id, v]) => {
       if (v.min === '' || v.max === '') return acc;
@@ -190,18 +213,24 @@ export function CategoryEdit() {
       if (catErr) throw catErr;
 
       // 2. Replace nutrition goals.
-      //    Ratio storage: normalizedRatio = second / first (B / A).
+      //    Ratio storage: normalizedRatio = A / B (first ÷ second).
+      //    We sort the two computed values so goal_min ≤ goal_max always,
+      //    satisfying the DB constraint regardless of which side increases
+      //    (e.g. Protein:Carb 1:1→1:2.5 gives raw [1, 0.4]; stored as [0.4, 1]).
       await supabase.from('category_goals').delete().eq('category_id', categoryId);
       const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => {
         const param = parameters?.find((p) => p.id === paramId);
         const isRatio = param?.param_type === 'ratio';
-        const goalMin = isRatio
-          ? (normalizeDisplayedRatio(Number(g.minLeft), Number(g.min)) ?? 0)
-          : Number(g.min);
-        const goalMax = isRatio
-          ? (normalizeDisplayedRatio(Number(g.maxLeft), Number(g.max)) ?? 0)
-          : Number(g.max);
-        return { category_id: categoryId, parameter_id: paramId, goal_min: goalMin, goal_max: goalMax };
+        if (isRatio) {
+          const rawMin = normalizeDisplayedRatio(Number(g.minLeft), Number(g.min)) ?? 0;
+          const rawMax = normalizeDisplayedRatio(Number(g.maxLeft), Number(g.max)) ?? 0;
+          return {
+            category_id: categoryId, parameter_id: paramId,
+            goal_min: Math.min(rawMin, rawMax),
+            goal_max: Math.max(rawMin, rawMax),
+          };
+        }
+        return { category_id: categoryId, parameter_id: paramId, goal_min: Number(g.min), goal_max: Number(g.max) };
       });
       if (goalInserts.length) {
         const { error: goalErr } = await supabase.from('category_goals').insert(goalInserts);
@@ -307,8 +336,9 @@ export function CategoryEdit() {
                 const isChecked = selectedParams[p.id] != null;
                 const higher    = p.direction === 'higher_is_better';
                 return (
-                  <div key={p.id} className={`flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5 transition-colors ${submitted && rangeErrors[p.id] ? 'bg-red-50' : isChecked ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
-                    <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+                  <div key={p.id} className={`rounded-xl px-3 py-2.5 transition-colors ${submitted && rangeErrors[p.id] ? 'bg-red-50' : isChecked ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                    {/* Line 1: checkbox + name + direction */}
+                    <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         className="w-4 h-4 rounded accent-violet-600 cursor-pointer flex-shrink-0"
@@ -316,20 +346,21 @@ export function CategoryEdit() {
                         onChange={(e) => toggleParam(p.id, e.target.checked)}
                       />
                       <span className="text-sm text-gray-800 font-medium">{p.name}</span>
-                      <span className={`text-xs font-medium ${higher ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      <span className={`text-xs font-medium whitespace-nowrap ${higher ? 'text-emerald-600' : 'text-rose-500'}`}>
                         ({higher ? 'Higher is better' : 'Lower is better'})
                       </span>
                     </label>
+                    {/* Line 2: min/max inputs (only when checked) */}
                     {isChecked && (
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-3 mt-2 ml-6 flex-wrap">
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-400">Min</span>
+                          <span className="text-xs text-gray-400 w-6">Min</span>
                           {p.unit === 'ratio' ? (
                             <>
                               <input
                                 type="number"
                                 placeholder="1"
-                                className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
                                 value={selectedParams[p.id].minLeft}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], minLeft: e.target.value } }))}
                               />
@@ -337,7 +368,7 @@ export function CategoryEdit() {
                               <input
                                 type="number"
                                 placeholder="0"
-                                className={`w-16 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                className={`w-14 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                 value={selectedParams[p.id].min}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], min: e.target.value } }))}
                               />
@@ -353,13 +384,13 @@ export function CategoryEdit() {
                           )}
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-400">Max</span>
+                          <span className="text-xs text-gray-400 w-7">Max</span>
                           {p.unit === 'ratio' ? (
                             <>
                               <input
                                 type="number"
                                 placeholder="1"
-                                className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
                                 value={selectedParams[p.id].maxLeft}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], maxLeft: e.target.value } }))}
                               />
@@ -367,7 +398,7 @@ export function CategoryEdit() {
                               <input
                                 type="number"
                                 placeholder="0"
-                                className={`w-16 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                className={`w-14 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                 value={selectedParams[p.id].max}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], max: e.target.value } }))}
                               />
@@ -385,7 +416,7 @@ export function CategoryEdit() {
                       </div>
                     )}
                     {isChecked && submitted && rangeErrors[p.id] && (
-                      <p className="w-full text-[11px] text-red-500 font-medium pl-6 mt-0.5">
+                      <p className="text-[11px] text-red-500 font-medium pl-6 mt-0.5">
                         ⚠ Min value cannot be greater than Max value
                       </p>
                     )}

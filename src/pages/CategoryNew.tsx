@@ -151,18 +151,23 @@ export function CategoryNew() {
       }
 
       /* Insert selected nutrition goals.
-         Ratio storage: normalizedRatio = second / first (B / A).
-         We store the normalised scalar; display uses "1:storedValue" format. */
+         Ratio storage: normalizedRatio = A / B (first ÷ second).
+         We sort the two computed values so goal_min ≤ goal_max always,
+         satisfying the DB constraint regardless of which side increases
+         (e.g. Protein:Carb 1:1→1:2.5 gives raw [1, 0.4]; stored as [0.4, 1]). */
       const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => {
         const param = parameters?.find((p) => p.id === paramId);
         const isRatio = param?.param_type === 'ratio';
-        const goalMin = isRatio
-          ? (normalizeDisplayedRatio(Number(g.minLeft), Number(g.min)) ?? 0)
-          : Number(g.min);
-        const goalMax = isRatio
-          ? (normalizeDisplayedRatio(Number(g.maxLeft), Number(g.max)) ?? 0)
-          : Number(g.max);
-        return { category_id: cat.id, parameter_id: paramId, goal_min: goalMin, goal_max: goalMax };
+        if (isRatio) {
+          const rawMin = normalizeDisplayedRatio(Number(g.minLeft), Number(g.min)) ?? 0;
+          const rawMax = normalizeDisplayedRatio(Number(g.maxLeft), Number(g.max)) ?? 0;
+          return {
+            category_id: cat.id, parameter_id: paramId,
+            goal_min: Math.min(rawMin, rawMax),
+            goal_max: Math.max(rawMin, rawMax),
+          };
+        }
+        return { category_id: cat.id, parameter_id: paramId, goal_min: Number(g.min), goal_max: Number(g.max) };
       });
       if (goalInserts.length) {
         const { error: goalErr } = await supabase.from('category_goals').insert(goalInserts);
@@ -260,8 +265,9 @@ export function CategoryNew() {
                 const isChecked = selectedParams[p.id] != null;
                 const higher    = p.direction === 'higher_is_better';
                 return (
-                  <div key={p.id} className={`flex items-center gap-3 flex-wrap rounded-xl px-3 py-2.5 transition-colors ${submitted && rangeErrors[p.id] ? 'bg-red-50' : isChecked ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
-                    <label className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0">
+                  <div key={p.id} className={`rounded-xl px-3 py-2.5 transition-colors ${submitted && rangeErrors[p.id] ? 'bg-red-50' : isChecked ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                    {/* Line 1: checkbox + name + direction */}
+                    <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         className="w-4 h-4 rounded accent-violet-600 cursor-pointer flex-shrink-0"
@@ -269,20 +275,21 @@ export function CategoryNew() {
                         onChange={(e) => toggleParam(p.id, e.target.checked)}
                       />
                       <span className="text-sm text-gray-800 font-medium">{p.name}</span>
-                      <span className={`text-xs font-medium ${higher ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      <span className={`text-xs font-medium whitespace-nowrap ${higher ? 'text-emerald-600' : 'text-rose-500'}`}>
                         ({higher ? 'Higher is better' : 'Lower is better'})
                       </span>
                     </label>
+                    {/* Line 2: min/max inputs (only when checked) */}
                     {isChecked && (
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-3 mt-2 ml-6 flex-wrap">
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-400">Min</span>
+                          <span className="text-xs text-gray-400 w-6">Min</span>
                           {p.unit === 'ratio' ? (
                             <>
                               <input
                                 type="number"
                                 placeholder="1"
-                                className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
                                 value={selectedParams[p.id].minLeft}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], minLeft: e.target.value } }))}
                               />
@@ -290,7 +297,7 @@ export function CategoryNew() {
                               <input
                                 type="number"
                                 placeholder="0"
-                                className={`w-16 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                className={`w-14 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.min ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                 value={selectedParams[p.id].min}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], min: e.target.value } }))}
                               />
@@ -306,13 +313,13 @@ export function CategoryNew() {
                           )}
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="text-xs text-gray-400">Max</span>
+                          <span className="text-xs text-gray-400 w-7">Max</span>
                           {p.unit === 'ratio' ? (
                             <>
                               <input
                                 type="number"
                                 placeholder="1"
-                                className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
+                                className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent"
                                 value={selectedParams[p.id].maxLeft}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], maxLeft: e.target.value } }))}
                               />
@@ -320,7 +327,7 @@ export function CategoryNew() {
                               <input
                                 type="number"
                                 placeholder="0"
-                                className={`w-16 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                                className={`w-14 border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-transparent ${submitted && paramErrors[p.id]?.max ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
                                 value={selectedParams[p.id].max}
                                 onChange={(e) => setSelectedParams((s) => ({ ...s, [p.id]: { ...s[p.id], max: e.target.value } }))}
                               />
@@ -338,7 +345,7 @@ export function CategoryNew() {
                       </div>
                     )}
                     {isChecked && submitted && rangeErrors[p.id] && (
-                      <p className="w-full text-[11px] text-red-500 font-medium pl-6 mt-0.5">
+                      <p className="text-[11px] text-red-500 font-medium pl-6 mt-0.5">
                         ⚠ Min value cannot be greater than Max value
                       </p>
                     )}

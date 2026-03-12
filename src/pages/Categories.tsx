@@ -58,17 +58,62 @@ export function Categories() {
   /* ── Delete mutation ───────────────────────────────────────────────────── */
   const deleteCategory = useMutation({
     mutationFn: async (categoryId: string) => {
-      const { data: recipes } = await supabase
+      // Step 1 — collect recipe IDs for this category
+      const { data: recipes, error: e1 } = await supabase
         .from('recipes').select('id').eq('category_id', categoryId);
+      if (e1) throw e1;
       const recipeIds = (recipes ?? []).map((r: { id: string }) => r.id);
 
       if (recipeIds.length > 0) {
-        await supabase.from('recipe_ingredients').delete().in('recipe_id', recipeIds);
-        await supabase.from('recipe_versions').delete().in('recipe_id', recipeIds);
-        await supabase.from('recipes').delete().eq('category_id', categoryId);
+        // Step 2 — collect version IDs (recipe_ingredients and score_snapshots
+        //          reference recipe_versions, NOT recipes directly)
+        const { data: versions, error: e2 } = await supabase
+          .from('recipe_versions').select('id').in('recipe_id', recipeIds);
+        if (e2) throw e2;
+        const versionIds = (versions ?? []).map((v: { id: string }) => v.id);
+
+        if (versionIds.length > 0) {
+          // Step 3a — clear self-referential parent_version_id to avoid FK loop
+          const { error: e3a } = await supabase
+            .from('recipe_versions').update({ parent_version_id: null }).in('id', versionIds);
+          if (e3a) throw e3a;
+
+          // Step 3b — delete leaf tables (FK → recipe_versions)
+          const { error: e3b } = await supabase
+            .from('recipe_ingredients').delete().in('recipe_version_id', versionIds);
+          if (e3b) throw e3b;
+
+          const { error: e3c } = await supabase
+            .from('score_snapshots').delete().in('recipe_version_id', versionIds);
+          if (e3c) throw e3c;
+        }
+
+        // Step 4 — delete deletion_requests (FK → recipes)
+        const { error: e4 } = await supabase
+          .from('deletion_requests').delete().in('recipe_id', recipeIds);
+        if (e4) throw e4;
+
+        // Step 5 — now delete versions (FK → recipes)
+        const { error: e5 } = await supabase
+          .from('recipe_versions').delete().in('recipe_id', recipeIds);
+        if (e5) throw e5;
+
+        // Step 6 — now delete recipes (FK → categories)
+        const { error: e6 } = await supabase
+          .from('recipes').delete().in('id', recipeIds);
+        if (e6) throw e6;
       }
-      await supabase.from('category_goals').delete().eq('category_id', categoryId);
-      await supabase.from('category_components').delete().eq('category_id', categoryId);
+
+      // Step 7 — delete category child tables
+      const { error: e7 } = await supabase
+        .from('category_goals').delete().eq('category_id', categoryId);
+      if (e7) throw e7;
+
+      const { error: e8 } = await supabase
+        .from('category_components').delete().eq('category_id', categoryId);
+      if (e8) throw e8;
+
+      // Step 8 — finally delete the category itself
       const { error } = await supabase.from('categories').delete().eq('id', categoryId);
       if (error) throw error;
     },
@@ -134,11 +179,13 @@ export function Categories() {
   });
 
   /* ── Profiles (for creator names) ─────────────────────────────────────── */
+  /* Use get_all_profiles() RPC (SECURITY DEFINER) so managers/dieticians   */
+  /* can also resolve admin profile names — the direct table query is        */
+  /* blocked by RLS for non-admin roles.                                     */
   const { data: profiles } = useQuery({
     queryKey: ['profiles_list'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('profiles').select('id, full_name, email, role');
+      const { data, error } = await supabase.rpc('get_all_profiles');
       if (error) throw error;
       return data as Pick<Profile, 'id' | 'full_name' | 'email' | 'role'>[];
     },
@@ -361,21 +408,25 @@ export function Categories() {
 
                     {/* Approved By */}
                     <td className="td">
-                      {c.approved_by ? (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] font-bold text-emerald-700 shrink-0">
-                            {(creatorName(c.approved_by)[0] || '?').toUpperCase()}
+                      {(() => {
+                        if (!c.approved_by) return <span className="text-sm text-gray-300">—</span>;
+                        const name = creatorName(c.approved_by);
+                        const role = creatorRole(c.approved_by);
+                        if (name === '—') return <span className="text-sm text-gray-300">—</span>;
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] font-bold text-emerald-700 shrink-0">
+                              {name[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-sm text-gray-700">{name}</span>
+                              {role && (
+                                <span className="text-xs text-gray-400 capitalize ml-1">({role})</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <span className="text-sm text-gray-700">{creatorName(c.approved_by)}</span>
-                            {creatorRole(c.approved_by) && (
-                              <span className="text-xs text-gray-400 capitalize ml-1">({creatorRole(c.approved_by)})</span>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-gray-300">—</span>
-                      )}
+                        );
+                      })()}
                     </td>
 
                     <td className="td text-gray-600 text-sm">{fmtDate(c.created_at)}</td>

@@ -274,7 +274,11 @@ export function Dashboard() {
       </div>
 
       {/* ── Admin: Approval queue ──────────────────────── */}
-      {profile.role === 'admin' && (pendingCategories?.length ?? 0) > 0 && (
+      {profile.role === 'admin' && (
+        (pendingCategories?.length ?? 0) > 0 ||
+        (pendingUsers?.length ?? 0) > 0 ||
+        (pendingDeletions?.length ?? 0) > 0
+      ) && (
         <Section title="Approval queue">
           <div className="card overflow-hidden">
             <ul className="divide-y divide-gray-50">

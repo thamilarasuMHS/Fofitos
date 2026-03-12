@@ -947,13 +947,14 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
   const nutrErrors = NUTR_FIELDS.reduce<Record<NutrKey, boolean>>(
     (acc, { key }) => ({
       ...acc,
-      [key]: submitted && (nutrForm[key] === '' || Number(nutrForm[key]) <= 0),
+      // 0 is valid (e.g. Added Sugar = 0 for chilli oil). Only blank/undefined is an error.
+      [key]: submitted && nutrForm[key] === '',
     }),
     {} as Record<NutrKey, boolean>
   );
   const isFormValid =
     name.trim() !== '' &&
-    NUTR_FIELDS.every(({ key }) => nutrForm[key] !== '' && Number(nutrForm[key]) > 0);
+    NUTR_FIELDS.every(({ key }) => nutrForm[key] !== '');
 
   function nutrInputCls(hasError: boolean) {
     return `w-28 border rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:text-gray-300 ${
@@ -1059,8 +1060,8 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
                   </div>
                 </div>
               ))}
-              {submitted && NUTR_FIELDS.some(({ key }) => nutrForm[key] === '' || Number(nutrForm[key]) <= 0) && (
-                <p className="text-xs text-red-500 pt-1">All nutrition values must be greater than 0</p>
+              {submitted && NUTR_FIELDS.some(({ key }) => nutrForm[key] === '') && (
+                <p className="text-xs text-red-500 pt-1">All nutrition values are required (0 is allowed)</p>
               )}
             </div>
           </div>
