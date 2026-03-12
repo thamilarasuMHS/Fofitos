@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { SauceLibrary as Sauce, Profile } from '@/types/database';
@@ -200,6 +201,7 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
   sauceId: string; onClose: () => void; onSuccess: () => void;
 }) {
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
 
   const [name, setName] = useState('');
   const [batchTotal, setBatchTotal] = useState('');
@@ -281,7 +283,7 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
 
   const saveSauce = useMutation({
     mutationFn: async () => {
-      if (!profile?.id) return;
+      if (!profile?.id) return 0;
       const batch = Number(batchTotal) || 1;
       await supabase.from('sauce_library')
         .update({ name: name.trim(), batch_total_g: batch }).eq('id', sauceId);
@@ -302,8 +304,22 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
         added_sugar_g: Number(nutrForm.added_sugar_g),
         sort_order:    0,
       });
+
+      /* ── Cascade via SECURITY DEFINER RPC (bypasses RLS) ── */
+      const { data: count, error: rpcErr } = await supabase.rpc(
+        'cascade_update_recipe_ingredients_by_sauce',
+        { p_sauce_id: sauceId }
+      );
+      if (rpcErr) throw rpcErr;
+      return (count as number) ?? 0;
     },
-    onSuccess: () => onSuccess(),
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ['recipe_ingredients'] });
+      if (count > 0) {
+        toast.success(`Sub component updated — ${count} recipe ingredient${count > 1 ? 's' : ''} recalculated.`);
+      }
+      onSuccess();
+    },
   });
 
   /* Loading */

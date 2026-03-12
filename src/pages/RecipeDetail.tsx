@@ -1152,6 +1152,7 @@ function ComponentIngredientCard({
         custom_name:           name,
         quantity_g:            q,
         raw_cooked:            ingType === 'subcomponent' ? 'cooked' : (rawCooked as RawCookedEnum),
+        ingredient_id:         ingType === 'ingredient' ? (selectedIng?.id ?? null) : null,
         sauce_id:              ingType === 'subcomponent' ? (selectedSauce?.id ?? null) : null,
       };
       for (const { key } of NUTR_FIELDS) {

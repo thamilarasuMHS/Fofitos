@@ -155,11 +155,25 @@ export function IngredientDatabase() {
           });
         }
       }
+
+      /* ── Cascade via SECURITY DEFINER RPC (bypasses RLS) ── */
+      const { data: count, error: rpcErr } = await supabase.rpc(
+        'cascade_update_recipe_ingredients_by_ingredient',
+        { p_ingredient_id: id }
+      );
+      if (rpcErr) throw rpcErr;
+      return (count as number) ?? 0;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ['ingredient_database'] });
       queryClient.invalidateQueries({ queryKey: ['ingredient_edit_history', editingIngId!] });
+      queryClient.invalidateQueries({ queryKey: ['recipe_ingredients'] });
       setEditingIngId(null); setEditIngForm({});
+      if (count > 0) {
+        toast.success(`Ingredient updated — ${count} recipe ingredient${count > 1 ? 's' : ''} recalculated.`);
+      } else {
+        toast.success('Ingredient updated.');
+      }
     },
   });
 
