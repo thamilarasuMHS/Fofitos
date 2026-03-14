@@ -64,9 +64,11 @@ export function IngredientDatabase() {
   const [search, setSearch]                 = useState('');
   const [sauceSearch, setSauceSearch]       = useState('');
   const [saucePage, setSaucePage]           = useState(0);
-  const [editingIngId, setEditingIngId]     = useState<string | null>(null);
-  const [editIngForm, setEditIngForm]       = useState<Partial<Record<DbNutrField, number>>>({});
-  const [editingSauceId, setEditingSauceId] = useState<string | null>(null);
+  const [editingIngId, setEditingIngId]         = useState<string | null>(null);
+  const [editIngForm, setEditIngForm]           = useState<Partial<Record<DbNutrField, number>>>({});
+  const [editIngName, setEditIngName]           = useState<string>('');
+  const [editIngRawCooked, setEditIngRawCooked] = useState<RawCookedEnum>('raw');
+  const [editingSauceId, setEditingSauceId]     = useState<string | null>(null);
 
   /* ── Queries ──────────────────────────────────────────────────────────── */
   const { data: ingredients, isLoading: ingLoading } = useQuery({
@@ -142,11 +144,30 @@ export function IngredientDatabase() {
 
   /* ── Ingredient mutations ─────────────────────────────────────────────── */
   const updateIngredient = useMutation({
-    mutationFn: async ({ id, updates, editedBy }: { id: string; updates: Record<string, number>; editedBy: string }) => {
+    mutationFn: async ({ id, updates, editedBy, name, rawCooked }: {
+      id: string;
+      updates: Record<string, number>;
+      editedBy: string;
+      name: string;
+      rawCooked: RawCookedEnum;
+    }) => {
+      /* ── Duplicate name check (exclude self) ── */
+      const { data: existing } = await supabase
+        .from('ingredient_database')
+        .select('id')
+        .ilike('name', name.trim())
+        .is('deleted_at', null)
+        .neq('id', id)
+        .maybeSingle();
+      if (existing) throw new Error('An ingredient with this name already exists');
+
       const { data: old, error: fetchErr } = await supabase.from('ingredient_database').select('*').eq('id', id).single();
       if (fetchErr || !old) throw fetchErr;
-      const { error } = await supabase.from('ingredient_database').update(updates).eq('id', id);
+
+      const fullUpdate = { ...updates, name: name.trim(), raw_cooked: rawCooked };
+      const { error } = await supabase.from('ingredient_database').update(fullUpdate).eq('id', id);
       if (error) throw error;
+
       for (const field of DB_NUTR_FIELDS) {
         if (updates[field] != null && old[field] !== updates[field]) {
           await supabase.from('ingredient_edit_history').insert({
@@ -168,12 +189,15 @@ export function IngredientDatabase() {
       queryClient.invalidateQueries({ queryKey: ['ingredient_database'] });
       queryClient.invalidateQueries({ queryKey: ['ingredient_edit_history', editingIngId!] });
       queryClient.invalidateQueries({ queryKey: ['recipe_ingredients'] });
-      setEditingIngId(null); setEditIngForm({});
+      setEditingIngId(null); setEditIngForm({}); setEditIngName(''); setEditIngRawCooked('raw');
       if (count > 0) {
         toast.success(`Ingredient updated — ${count} recipe ingredient${count > 1 ? 's' : ''} recalculated.`);
       } else {
         toast.success('Ingredient updated.');
       }
+    },
+    onError: (err: Error) => {
+      toast.error(err.message ?? 'Failed to update ingredient.');
     },
   });
 
@@ -359,7 +383,7 @@ export function IngredientDatabase() {
                         <div className="flex items-center gap-2">
                           {canEdit && (
                             <button type="button" className="btn-secondary py-1 px-3 text-xs"
-                              onClick={() => { setEditingIngId(row.id); setEditIngForm({}); }}>
+                              onClick={() => { setEditingIngId(row.id); setEditIngForm({}); setEditIngName(row.name); setEditIngRawCooked(row.raw_cooked); }}>
                               Edit
                             </button>
                           )}
@@ -541,7 +565,7 @@ export function IngredientDatabase() {
                   <h2 className="font-semibold text-gray-900">Edit Ingredient</h2>
                   <p className="text-xs text-gray-500 mt-0.5">Per 100g values</p>
                 </div>
-                <button type="button" onClick={() => { setEditingIngId(null); setEditIngForm({}); }}
+                <button type="button" onClick={() => { setEditingIngId(null); setEditIngForm({}); setEditIngName(''); setEditIngRawCooked('raw'); }}
                   className="text-gray-400 hover:text-gray-600">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                     <path d="M6 18L18 6M6 6l12 12"/>
@@ -550,19 +574,41 @@ export function IngredientDatabase() {
               </div>
 
               <div className="px-6 py-5">
-                <div className="flex items-center gap-3 mb-5 pb-4 border-b border-gray-100">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                      <ellipse cx="12" cy="6" rx="8" ry="3"/>
-                      <path d="M4 6v6c0 1.657 3.582 3 8 3s8-1.343 8-3V6"/>
-                      <path d="M4 12v6c0 1.657 3.582 3 8 3s8-1.343 8-3v-6"/>
-                    </svg>
-                  </div>
+                <div className="mb-5 pb-4 border-b border-gray-100 space-y-3">
+                  {/* Name */}
                   <div>
-                    <p className="font-semibold text-gray-900">{row.name}</p>
-                    <span className={`badge text-[10px] ${row.raw_cooked === 'raw' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                      {row.raw_cooked}
-                    </span>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input w-full"
+                      value={editIngName}
+                      onChange={(e) => setEditIngName(e.target.value)}
+                      placeholder="Ingredient name"
+                    />
+                  </div>
+                  {/* Raw / Cooked toggle */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
+                    <div className="flex gap-2">
+                      {(['raw', 'cooked'] as RawCookedEnum[]).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setEditIngRawCooked(v)}
+                          className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-all ${
+                            editIngRawCooked === v
+                              ? v === 'raw'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                : 'bg-amber-50 text-amber-700 border-amber-300'
+                              : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          {v.charAt(0).toUpperCase() + v.slice(1)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -598,20 +644,25 @@ export function IngredientDatabase() {
 
               <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
                 <button type="button" className="btn-primary"
-                  disabled={updateIngredient.isPending}
+                  disabled={updateIngredient.isPending || !editIngName.trim()}
                   onClick={() => {
+                    if (!editIngName.trim() || !profile?.id) return;
                     const updates: Record<string, number> = {};
                     for (const k of DB_NUTR_FIELDS) {
                       if (editIngForm[k] != null) updates[k] = editIngForm[k]!;
                     }
-                    if (Object.keys(updates).length && profile?.id) {
-                      updateIngredient.mutate({ id: editingIngId, updates, editedBy: profile.id });
-                    }
+                    updateIngredient.mutate({
+                      id: editingIngId,
+                      updates,
+                      editedBy: profile.id,
+                      name: editIngName,
+                      rawCooked: editIngRawCooked,
+                    });
                   }}>
                   {updateIngredient.isPending ? 'Saving…' : 'Save Changes'}
                 </button>
                 <button type="button" className="btn-secondary"
-                  onClick={() => { setEditingIngId(null); setEditIngForm({}); }}>
+                  onClick={() => { setEditingIngId(null); setEditIngForm({}); setEditIngName(''); setEditIngRawCooked('raw'); }}>
                   Cancel
                 </button>
               </div>
