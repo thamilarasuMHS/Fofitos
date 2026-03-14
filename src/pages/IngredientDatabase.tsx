@@ -978,7 +978,7 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
 
   const saveSauce = useMutation({
     mutationFn: async () => {
-      if (!profile?.id) return;
+      if (!profile?.id) return 0;
       const BATCH = 1000; // fixed batch size
       await supabase.from('sauce_library')
         .update({ name: name.trim(), batch_total_g: BATCH }).eq('id', sauceId);
@@ -999,10 +999,23 @@ function SauceEditModal({ sauceId, onClose, onSuccess }: {
         added_sugar_g: Number(nutrForm.added_sugar_g),
         sort_order:    0,
       });
+      /* ── Cascade via SECURITY DEFINER RPC (bypasses RLS) ── */
+      const { data: count, error: rpcErr } = await supabase.rpc(
+        'cascade_update_recipe_ingredients_by_sauce',
+        { p_sauce_id: sauceId }
+      );
+      if (rpcErr) throw rpcErr;
+      return (count as number) ?? 0;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       // Evict stale detail so re-opening always fetches fresh values
       queryClient.removeQueries({ queryKey: ['sauce_edit_detail', sauceId] });
+      queryClient.invalidateQueries({ queryKey: ['recipe_ingredients'] });
+      if (count > 0) {
+        toast.success(`Sub component updated — ${count} recipe ingredient${count > 1 ? 's' : ''} recalculated.`);
+      } else {
+        toast.success('Sub component updated.');
+      }
       onSuccess();
     },
   });
