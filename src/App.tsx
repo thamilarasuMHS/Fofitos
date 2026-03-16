@@ -15,6 +15,7 @@ import { CategoryDetail } from '@/pages/CategoryDetail';
 import { CategoryEdit } from '@/pages/CategoryEdit';
 import { IngredientDatabase } from '@/pages/IngredientDatabase';
 import { RecipeDetail } from '@/pages/RecipeDetail';
+import { Recipes } from '@/pages/Recipes';
 
 function ProtectedRoutes() {
   const { user, profile, loading } = useAuth();
@@ -55,6 +56,7 @@ function ProtectedRoutes() {
         <Route path="/categories/:categoryId/edit" element={<CategoryEdit />} />
         <Route path="/categories/:categoryId/recipes/:recipeId" element={<RecipeDetail />} />
 <Route path="/ingredient-database" element={<IngredientDatabase />} />
+        <Route path="/recipes" element={<Recipes />} />
         <Route
           path="/settings"
           element={<Navigate to="/settings/parameters" replace />}

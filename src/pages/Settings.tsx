@@ -17,7 +17,7 @@ export function Settings() {
   });
 
   const { data: parameters, isLoading } = useQuery({
-    queryKey: ['nutrition_parameters'],
+    queryKey: ['nutrition_parameters_all'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('nutrition_parameters')
@@ -58,6 +58,7 @@ export function Settings() {
       if (error) throw error;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nutrition_parameters_all'] });
       queryClient.invalidateQueries({ queryKey: ['nutrition_parameters'] });
       setShowForm(false);
       setForm({ name: '', unit: 'g', param_type: 'absolute', numerator_param_id: '', denominator_param_id: '', direction: 'higher_is_better' });
@@ -72,8 +73,22 @@ export function Settings() {
       if (error) throw error;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nutrition_parameters_all'] });
       queryClient.invalidateQueries({ queryKey: ['nutrition_parameters'] });
       queryClient.invalidateQueries({ queryKey: ['category_goals_param_usage'] });
+    },
+  });
+
+  const toggleParam = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await supabase.from('nutrition_parameters')
+        .update({ is_active }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nutrition_parameters_all'] });
+      queryClient.invalidateQueries({ queryKey: ['nutrition_parameters'] });
+      toast.success('Parameter updated.');
     },
   });
 
@@ -210,6 +225,7 @@ export function Settings() {
                 <th className="th">Unit</th>
                 <th className="th">Type</th>
                 <th className="th">Direction</th>
+                <th className="th">Status</th>
                 <th className="th">Used in</th>
                 <th className="th">Actions</th>
               </tr>
@@ -218,7 +234,7 @@ export function Settings() {
               {parameters?.map((p) => {
                 const usedIn = inUseCount?.[p.id] ?? 0;
                 return (
-                  <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={p.id} className={`transition-colors ${p.is_active ? 'hover:bg-gray-50/50' : 'opacity-50 bg-gray-50/60'}`}>
                     <td className="td font-medium text-gray-900">{p.name}</td>
                     <td className="td">
                       <span className="badge bg-gray-100 text-gray-600">{p.unit}</span>
@@ -234,6 +250,11 @@ export function Settings() {
                       </span>
                     </td>
                     <td className="td">
+                      <span className={`badge ${p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {p.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="td">
                       {usedIn > 0
                         ? <span className="text-xs text-violet-600 font-medium">{usedIn} {usedIn === 1 ? 'category' : 'categories'}</span>
                         : <span className="text-xs text-gray-400">—</span>
@@ -241,6 +262,12 @@ export function Settings() {
                     </td>
                     <td className="td">
                       <div className="flex items-center gap-2">
+                        <button type="button"
+                          className={p.is_active ? 'btn-secondary' : 'btn-primary'}
+                          onClick={() => toggleParam.mutate({ id: p.id, is_active: !p.is_active })}
+                          disabled={toggleParam.isPending}>
+                          {p.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
                         <button type="button" className="btn-danger"
                           onClick={() => {
                             const count = inUseCount?.[p.id] ?? 0;

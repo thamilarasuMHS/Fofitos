@@ -118,7 +118,7 @@ export function RecipeDetail() {
   const { data: parameters } = useQuery({
     queryKey: ['nutrition_parameters'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('nutrition_parameters').select('*').order('sort_order');
+      const { data, error } = await supabase.from('nutrition_parameters').select('*').eq('is_active', true).order('sort_order');
       if (error) throw error;
       return data as NutritionParameter[];
     },

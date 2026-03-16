@@ -5,17 +5,27 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { NutritionParameter, ComponentLibrary, CategoryGoal, CategoryComponent } from '@/types/database';
 import { normalizeDisplayedRatio, isRatioRangeValid } from '@/utils/ratioUtils';
+import { computeTotals, scoreParameter, overallScore } from '@/lib/scoring';
+import { useAuth } from '@/hooks/useAuth';
 
 export function CategoryEdit() {
   const { categoryId }  = useParams<{ categoryId: string }>();
   const navigate        = useNavigate();
   const queryClient     = useQueryClient();
+  const { profile }     = useAuth();
 
   const [name, setName]                     = useState('');
   const [selectedParams, setSelectedParams] = useState<Record<string, { min: string; max: string; minLeft: string; maxLeft: string }>>({});
   const [selectedComps, setSelectedComps]   = useState<Set<string>>(new Set());
   const [submitted, setSubmitted]           = useState(false);
   const [initialized, setInitialized]       = useState(false);
+
+  /* Maps parameter display name → NutritionTotals key (mirrors RecipeDetail.tsx) */
+  const nameToKey: Record<string, string> = {
+    'Calories': 'calories', 'Protein': 'protein_g', 'Carbs': 'carbs_g',
+    'Fat': 'fat_g', 'Fibre': 'fibre_g', 'Omega-3': 'omega3_g',
+    'Omega-6': 'omega6_g', 'Sodium': 'sodium_mg', 'Added Sugar': 'added_sugar_g',
+  };
 
   /* ── Fetch existing data ───────────────────────────────── */
   const { data: category } = useQuery({
@@ -52,7 +62,7 @@ export function CategoryEdit() {
   const { data: parameters } = useQuery({
     queryKey: ['nutrition_parameters'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('nutrition_parameters').select('*').order('sort_order');
+      const { data, error } = await supabase.from('nutrition_parameters').select('*').eq('is_active', true).order('sort_order');
       if (error) throw error;
       return data as NutritionParameter[];
     },
@@ -200,6 +210,86 @@ export function CategoryEdit() {
     });
   }
 
+  /* ── Recalculate score snapshots for all recipes after goal change ───────── */
+  async function recalcScoresForCategory(catId: string): Promise<number> {
+    // 1. Fetch freshly saved goals
+    const { data: newGoals } = await supabase
+      .from('category_goals').select('*').eq('category_id', catId);
+
+    // 2. Fetch all nutrition parameters
+    const { data: params } = await supabase
+      .from('nutrition_parameters').select('*');
+
+    if (!newGoals?.length || !params?.length) return 0;
+
+    // 3. Fetch all non-deleted recipes in this category
+    const { data: recipes } = await supabase
+      .from('recipes').select('id').eq('category_id', catId).is('deleted_at', null);
+
+    if (!recipes?.length) return 0;
+
+    let count = 0;
+    for (const recipe of recipes) {
+      // 4. Get latest version for this recipe
+      const { data: versions } = await supabase
+        .from('recipe_versions').select('id')
+        .eq('recipe_id', recipe.id)
+        .order('version_number', { ascending: false })
+        .limit(1);
+
+      const version = versions?.[0];
+      if (!version) continue;
+
+      // 5. Get its ingredients
+      const { data: ingredients } = await supabase
+        .from('recipe_ingredients')
+        .select('quantity_g, calories, protein_g, carbs_g, fat_g, fibre_g, omega3_g, omega6_g, sodium_mg, added_sugar_g')
+        .eq('recipe_version_id', version.id);
+
+      if (!ingredients?.length) continue;
+
+      // 6. Compute totals
+      const totals = computeTotals(ingredients) as unknown as Record<string, number>;
+
+      // 7. Score each goal (same logic as RecipeDetail.tsx)
+      const paramScores: Record<string, number> = {};
+      const goalSnap: Record<string, { min: number; max: number }> = {};
+
+      for (const g of newGoals) {
+        const param = (params as NutritionParameter[]).find((p) => p.id === g.parameter_id);
+        if (!param) continue;
+
+        let actual = 0;
+        if (param.param_type === 'absolute') {
+          actual = totals[nameToKey[param.name] ?? ''] ?? 0;
+        } else {
+          // Ratio: numerator / denominator (stored as A/B scalar)
+          const numParam = params.find((p) => p.id === param.numerator_param_id);
+          const denParam = params.find((p) => p.id === param.denominator_param_id);
+          const n = numParam ? (totals[nameToKey[numParam.name] ?? ''] ?? 0) : 0;
+          const d = denParam ? (totals[nameToKey[denParam.name] ?? ''] ?? 0) : 0;
+          actual = d > 0 ? n / d : 0;
+        }
+
+        paramScores[param.id] = scoreParameter(actual, g.goal_min, g.goal_max, param.direction);
+        goalSnap[param.name] = { min: g.goal_min, max: g.goal_max };
+      }
+
+      // 8. Insert snapshot tagged 'goal_update'
+      await supabase.from('score_snapshots').insert({
+        recipe_version_id: version.id,
+        overall_score: overallScore(Object.values(paramScores)),
+        parameter_scores: paramScores,
+        goal_snapshot: goalSnap,
+        triggered_by: 'goal_update',
+        actor_id: profile?.id ?? null,
+      });
+
+      count++;
+    }
+    return count;
+  }
+
   /* ── Save (update) ─────────────────────────────────────── */
   const updateCategory = useMutation({
     mutationFn: async () => {
@@ -247,12 +337,27 @@ export function CategoryEdit() {
         if (compErr) throw compErr;
       }
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['category', categoryId] });
       queryClient.invalidateQueries({ queryKey: ['category_goals', categoryId] });
       queryClient.invalidateQueries({ queryKey: ['category_components', categoryId] });
       queryClient.invalidateQueries({ queryKey: ['categories'] });
-      toast.success('Category updated successfully.');
+
+      // Recalculate score snapshots for all recipes in this category
+      const toastId = toast.loading('Recalculating recipe scores…');
+      try {
+        const count = await recalcScoresForCategory(categoryId!);
+        toast.dismiss(toastId);
+        if (count > 0) {
+          toast.success(`Category updated — scores recalculated for ${count} recipe${count > 1 ? 's' : ''}.`);
+        } else {
+          toast.success('Category updated successfully.');
+        }
+      } catch {
+        toast.dismiss(toastId);
+        toast.success('Category updated successfully.');
+      }
+
       navigate(`/categories/${categoryId}`);
     },
     onError: (err: Error) => {

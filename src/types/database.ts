@@ -29,6 +29,7 @@ export interface NutritionParameter {
   denominator_param_id: string | null;
   direction: DirectionEnum;
   sort_order: number;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

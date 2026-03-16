@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { IngredientDatabase as IngredientDB, SauceLibrary as Sauce, Profile, RawCookedEnum } from '@/types/database';
 
-const SAUCE_PAGE_SIZE = 10;
+type PageSize = 20 | 50 | 100;
 
 /* ─── Shared nutrition field definitions ───────────────────────────────────── */
 type NutrKey =
@@ -63,7 +63,10 @@ export function IngredientDatabase() {
   const [addType, setAddType]               = useState<'ingredient' | 'subcomponent'>('ingredient');
   const [search, setSearch]                 = useState('');
   const [sauceSearch, setSauceSearch]       = useState('');
+  const [ingPage, setIngPage]               = useState(0);
+  const [ingPageSize, setIngPageSize]       = useState<PageSize>(20);
   const [saucePage, setSaucePage]           = useState(0);
+  const [saucePageSize, setSaucePageSize]   = useState<PageSize>(20);
   const [editingIngId, setEditingIngId]         = useState<string | null>(null);
   const [editIngForm, setEditIngForm]           = useState<Partial<Record<DbNutrField, number>>>({});
   const [editIngName, setEditIngName]           = useState<string>('');
@@ -71,25 +74,34 @@ export function IngredientDatabase() {
   const [editingSauceId, setEditingSauceId]     = useState<string | null>(null);
 
   /* ── Queries ──────────────────────────────────────────────────────────── */
-  const { data: ingredients, isLoading: ingLoading } = useQuery({
-    queryKey: ['ingredient_database', search],
+  const { data: ingredientsData, isLoading: ingLoading } = useQuery({
+    queryKey: ['ingredient_database', search, ingPage, ingPageSize],
     queryFn: async () => {
-      let q = supabase.from('ingredient_database').select('*').is('deleted_at', null).order('name');
+      let q = supabase
+        .from('ingredient_database')
+        .select('*', { count: 'exact' })
+        .is('deleted_at', null)
+        .order('name')
+        .range(ingPage * ingPageSize, (ingPage + 1) * ingPageSize - 1);
       if (search.trim()) q = q.ilike('name', `%${search.trim()}%`);
-      const { data, error } = await q;
+      const { data, error, count } = await q;
       if (error) throw error;
-      return data as IngredientDB[];
+      return { rows: (data ?? []) as IngredientDB[], total: count ?? 0 };
     },
+    placeholderData: (prev) => prev,
   });
+  const ingredients = ingredientsData?.rows ?? [];
+  const ingTotal    = ingredientsData?.total ?? 0;
+  const ingTotalPages = Math.ceil(ingTotal / ingPageSize);
 
   const { data: saucesData, isLoading: sauceLoading } = useQuery({
-    queryKey: ['sauce_library', saucePage, sauceSearch],
+    queryKey: ['sauce_library', saucePage, sauceSearch, saucePageSize],
     queryFn: async () => {
       let q = supabase
         .from('sauce_library')
         .select('*', { count: 'exact' })
         .order('name')
-        .range(saucePage * SAUCE_PAGE_SIZE, (saucePage + 1) * SAUCE_PAGE_SIZE - 1);
+        .range(saucePage * saucePageSize, (saucePage + 1) * saucePageSize - 1);
       if (sauceSearch.trim()) q = q.ilike('name', `%${sauceSearch.trim()}%`);
       const { data, error, count } = await q;
       if (error) throw error;
@@ -110,7 +122,7 @@ export function IngredientDatabase() {
 
   const sauces      = saucesData?.rows ?? [];
   const sauceTotal  = saucesData?.total ?? 0;
-  const sauceTotalPages = Math.ceil(sauceTotal / SAUCE_PAGE_SIZE);
+  const sauceTotalPages = Math.ceil(sauceTotal / saucePageSize);
 
   const { data: editHistory } = useQuery({
     queryKey: ['ingredient_edit_history', editingIngId],
@@ -275,7 +287,7 @@ export function IngredientDatabase() {
           <h1 className="text-2xl font-bold text-gray-900">Ingredient Database</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {activeTab === 'ingredients'
-              ? `${ingredients?.length ?? 0} ingredients`
+              ? `${ingTotal} ingredients`
               : `${sauceTotalData ?? sauceTotal} sub components`}
           </p>
         </div>
@@ -299,13 +311,13 @@ export function IngredientDatabase() {
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 border-b border-gray-200 mb-5">
         {[
-          { id: 'ingredients'   as const, label: 'Ingredients',    count: ingredients?.length ?? 0 },
+          { id: 'ingredients'   as const, label: 'Ingredients',    count: ingTotal },
           { id: 'subcomponents' as const, label: 'Sub Components', count: sauceTotalData ?? sauceTotal },
         ].map((t) => (
           <button
             key={t.id}
             type="button"
-            onClick={() => { setActiveTab(t.id); setSearch(''); setSauceSearch(''); setSaucePage(0); }}
+            onClick={() => { setActiveTab(t.id); setSearch(''); setSauceSearch(''); setIngPage(0); setSaucePage(0); }}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === t.id
                 ? 'border-violet-600 text-violet-700'
@@ -337,7 +349,7 @@ export function IngredientDatabase() {
               type="text" className="input pl-10"
               placeholder="Search ingredients by name…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setIngPage(0); }}
             />
           </div>
 
@@ -406,6 +418,39 @@ export function IngredientDatabase() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Ingredient pagination */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Show</span>
+              {([20, 50, 100] as PageSize[]).map((n) => (
+                <button key={n} type="button"
+                  onClick={() => { setIngPageSize(n); setIngPage(0); }}
+                  className={`px-3 py-1 rounded-lg text-sm border transition-all ${
+                    ingPageSize === n
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}>{n}</button>
+              ))}
+              <span className="text-sm text-gray-500">per page</span>
+            </div>
+            {ingTotalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-gray-500">
+                  {ingPage * ingPageSize + 1}–{Math.min((ingPage + 1) * ingPageSize, ingTotal)} of {ingTotal}
+                </p>
+                <button type="button"
+                  className="btn-secondary py-1.5 px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={ingPage === 0}
+                  onClick={() => setIngPage((p) => p - 1)}>← Previous</button>
+                <span className="text-sm text-gray-500 px-1">Page {ingPage + 1} of {ingTotalPages}</span>
+                <button type="button"
+                  className="btn-secondary py-1.5 px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={ingPage >= ingTotalPages - 1}
+                  onClick={() => setIngPage((p) => p + 1)}>Next →</button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -519,35 +564,38 @@ export function IngredientDatabase() {
                 </table>
               </div>
 
-              {/* Pagination */}
-              {sauceTotalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 px-1">
-                  <p className="text-sm text-gray-500">
-                    Showing {saucePage * SAUCE_PAGE_SIZE + 1}–{Math.min((saucePage + 1) * SAUCE_PAGE_SIZE, sauceTotal)} of {sauceTotal}
-                  </p>
+              {/* Sauce pagination */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Show</span>
+                  {([20, 50, 100] as PageSize[]).map((n) => (
+                    <button key={n} type="button"
+                      onClick={() => { setSaucePageSize(n); setSaucePage(0); }}
+                      className={`px-3 py-1 rounded-lg text-sm border transition-all ${
+                        saucePageSize === n
+                          ? 'bg-violet-600 text-white border-violet-600'
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                      }`}>{n}</button>
+                  ))}
+                  <span className="text-sm text-gray-500">per page</span>
+                </div>
+                {sauceTotalPages > 1 && (
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
+                    <p className="text-sm text-gray-500">
+                      {saucePage * saucePageSize + 1}–{Math.min((saucePage + 1) * saucePageSize, sauceTotal)} of {sauceTotal}
+                    </p>
+                    <button type="button"
                       className="btn-secondary py-1.5 px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                       disabled={saucePage === 0}
-                      onClick={() => setSaucePage((p) => p - 1)}
-                    >
-                      ← Previous
-                    </button>
-                    <span className="text-sm text-gray-500 px-1">
-                      Page {saucePage + 1} of {sauceTotalPages}
-                    </span>
-                    <button
-                      type="button"
+                      onClick={() => setSaucePage((p) => p - 1)}>← Previous</button>
+                    <span className="text-sm text-gray-500 px-1">Page {saucePage + 1} of {sauceTotalPages}</span>
+                    <button type="button"
                       className="btn-secondary py-1.5 px-3 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                       disabled={saucePage >= sauceTotalPages - 1}
-                      onClick={() => setSaucePage((p) => p + 1)}
-                    >
-                      Next →
-                    </button>
+                      onClick={() => setSaucePage((p) => p + 1)}>Next →</button>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </>

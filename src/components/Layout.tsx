@@ -49,6 +49,14 @@ function IconUsers() {
     </svg>
   );
 }
+function IconRecipes() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+      <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      <path d="M9 12h6M9 16h4"/>
+    </svg>
+  );
+}
 function IconSignOut() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -61,6 +69,7 @@ function IconSignOut() {
 const navIcons: Record<string, ReactNode> = {
   '/dashboard':           <IconDashboard />,
   '/categories':          <IconCategories />,
+  '/recipes':             <IconRecipes />,
   '/ingredient-database': <IconDatabase />,
   '/settings':            <IconSettings />,
   '/users':               <IconUsers />,
@@ -77,6 +86,7 @@ const menuByRole: Record<AppRole, NavItem[]> = {
   admin: [
     { to: '/dashboard',           label: 'Dashboard' },
     { to: '/categories',          label: 'Categories' },
+    { to: '/recipes',             label: 'Recipes' },
     { to: '/ingredient-database', label: 'Ingredient Database' },
     {
       kind: 'group',
@@ -92,16 +102,19 @@ const menuByRole: Record<AppRole, NavItem[]> = {
   manager: [
     { to: '/dashboard',           label: 'Dashboard' },
     { to: '/categories',          label: 'Categories' },
+    { to: '/recipes',             label: 'Recipes' },
     { to: '/ingredient-database', label: 'Ingredient Database' },
   ],
   dietician: [
     { to: '/dashboard',           label: 'Dashboard' },
     { to: '/categories',          label: 'Categories' },
+    { to: '/recipes',             label: 'Recipes' },
     { to: '/ingredient-database', label: 'Ingredient Database' },
   ],
   chef: [
     { to: '/dashboard',  label: 'Dashboard' },
     { to: '/categories', label: 'Categories' },
+    { to: '/recipes',    label: 'Recipes' },
   ],
 };
 
