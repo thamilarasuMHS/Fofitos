@@ -307,7 +307,8 @@ export function CategoryEdit() {
       //    We sort the two computed values so goal_min ≤ goal_max always,
       //    satisfying the DB constraint regardless of which side increases
       //    (e.g. Protein:Carb 1:1→1:2.5 gives raw [1, 0.4]; stored as [0.4, 1]).
-      await supabase.from('category_goals').delete().eq('category_id', categoryId);
+      const { error: delGoalErr } = await supabase.from('category_goals').delete().eq('category_id', categoryId);
+      if (delGoalErr) throw delGoalErr;
       const goalInserts = Object.entries(selectedParams).map(([paramId, g]) => {
         const param = parameters?.find((p) => p.id === paramId);
         const isRatio = param?.param_type === 'ratio';
@@ -328,7 +329,8 @@ export function CategoryEdit() {
       }
 
       // 3. Replace components (preserve library sort order)
-      await supabase.from('category_components').delete().eq('category_id', categoryId);
+      const { error: delCompErr } = await supabase.from('category_components').delete().eq('category_id', categoryId);
+      if (delCompErr) throw delCompErr;
       const compInserts = (componentLibrary ?? [])
         .filter((c) => selectedComps.has(c.id))
         .map((c, i) => ({ category_id: categoryId, name: c.name, sort_order: i }));

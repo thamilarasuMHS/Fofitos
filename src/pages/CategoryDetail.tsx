@@ -450,7 +450,7 @@ export function CategoryDetail() {
           <div className="card-header">
             <div>
               <h2 className="font-semibold text-gray-900">Components</h2>
-              <p className="text-xs text-gray-400 mt-0.5">{components?.length ?? 0} component{components?.length !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{new Set(components?.map((c) => c.name)).size ?? 0} component{(new Set(components?.map((c) => c.name)).size ?? 0) !== 1 ? 's' : ''}</p>
             </div>
           </div>
           <div className="card-body">
@@ -458,14 +458,17 @@ export function CategoryDetail() {
               <p className="text-sm text-gray-400 text-center py-4">No components defined.</p>
             ) : (
               <div className="space-y-2">
-                {components.map((comp, idx) => (
-                  <div key={comp.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center text-xs font-bold text-violet-700 shrink-0">
-                      {idx + 1}
+                {/* Deduplicate by name as a safety net against DB duplicates */}
+                {components
+                  .filter((comp, idx, arr) => arr.findIndex((c) => c.name === comp.name) === idx)
+                  .map((comp, idx) => (
+                    <div key={comp.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                      <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center text-xs font-bold text-violet-700 shrink-0">
+                        {idx + 1}
+                      </div>
+                      <span className="text-sm font-medium text-gray-800">{comp.name}</span>
                     </div>
-                    <span className="text-sm font-medium text-gray-800">{comp.name}</span>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>
