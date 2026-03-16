@@ -1,14 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { NutritionParameter } from '@/types/database';
 
-type PageSize = 20 | 50 | 100;
+type PageSize    = 20 | 50 | 100;
+type StatusFilter = 'all' | 'approved' | 'submitted' | 'draft' | 'changes_requested';
 
+/* ─── Helpers ──────────────────────────────────────────────────────────────── */
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function RecipeStatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    draft:             'bg-gray-100 text-gray-500',
+    submitted:         'bg-blue-50 text-blue-700',
+    approved:          'bg-green-50 text-green-700',
+    changes_requested: 'bg-amber-50 text-amber-700',
+  };
+  const labels: Record<string, string> = {
+    draft:             'Draft',
+    submitted:         'Submitted',
+    approved:          'Approved',
+    changes_requested: 'Changes Requested',
+  };
+  return (
+    <span className={`badge text-[10px] ${map[status] ?? 'bg-gray-100 text-gray-500'}`}>
+      {labels[status] ?? status.replace(/_/g, ' ')}
+    </span>
+  );
 }
 
 function scoreClass(s: number): string {
@@ -24,24 +46,33 @@ function dotColor(s: number | undefined): string {
   return 'bg-rose-400';
 }
 
+/* ─── Main component ───────────────────────────────────────────────────────── */
 export function Recipes() {
-  const [page, setPage]         = useState(0);
-  const [pageSize, setPageSize] = useState<PageSize>(20);
+  const [page, setPage]               = useState(0);
+  const [pageSize, setPageSize]       = useState<PageSize>(20);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  /* ── Approved recipe versions ─────────────────────────────────────────── */
+  /* Reset to page 0 when filter changes */
+  useEffect(() => { setPage(0); }, [statusFilter]);
+
+  /* ── All recipe versions (excluding soft-deleted recipes) ─────────────── */
   const { data, isLoading } = useQuery({
-    queryKey: ['approved_recipes', page, pageSize],
+    queryKey: ['all_recipe_versions', page, pageSize, statusFilter],
     queryFn: async () => {
-      const { data: rows, error, count } = await supabase
+      let q = supabase
         .from('recipe_versions')
         .select(
-          `id, recipe_id, version_number, approved_at, approved_by,
-           recipes ( name, category_id, categories ( name ) )`,
+          `id, recipe_id, version_number, status, submitted_at, approved_at,
+           recipes!inner ( name, category_id, deleted_at, categories ( name ) )`,
           { count: 'exact' }
         )
-        .eq('status', 'approved')
-        .order('approved_at', { ascending: false })
+        .filter('recipes.deleted_at', 'is', null)
+        .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
+
+      if (statusFilter !== 'all') q = q.eq('status', statusFilter);
+
+      const { data: rows, error, count } = await q;
       if (error) throw error;
       return { rows: rows ?? [], total: count ?? 0 };
     },
@@ -51,6 +82,35 @@ export function Recipes() {
   const rows       = data?.rows ?? [];
   const total      = data?.total ?? 0;
   const totalPages = Math.ceil(total / pageSize);
+
+  /* ── Status counts (for tab badges) ───────────────────────────────────── */
+  const { data: statusRows } = useQuery({
+    queryKey: ['all_recipe_versions_statuses'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('recipe_versions')
+        .select('status, recipes!inner ( deleted_at )')
+        .filter('recipes.deleted_at', 'is', null);
+      if (error) throw error;
+      return (data ?? []) as { status: string }[];
+    },
+  });
+
+  const counts = {
+    all:               statusRows?.length ?? 0,
+    approved:          statusRows?.filter((r) => r.status === 'approved').length ?? 0,
+    submitted:         statusRows?.filter((r) => r.status === 'submitted').length ?? 0,
+    draft:             statusRows?.filter((r) => r.status === 'draft').length ?? 0,
+    changes_requested: statusRows?.filter((r) => r.status === 'changes_requested').length ?? 0,
+  };
+
+  const TABS: { id: StatusFilter; label: string; count: number }[] = [
+    { id: 'all',               label: 'All',              count: counts.all               },
+    { id: 'approved',          label: 'Approved',         count: counts.approved          },
+    { id: 'submitted',         label: 'Submitted',        count: counts.submitted         },
+    { id: 'changes_requested', label: 'Changes Requested',count: counts.changes_requested },
+    { id: 'draft',             label: 'Draft',            count: counts.draft             },
+  ];
 
   /* ── Active nutrition parameters (for dot labels) ─────────────────────── */
   const { data: parameters } = useQuery({
@@ -74,7 +134,6 @@ export function Recipes() {
         .in('recipe_version_id', versionIds)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      // keep only the latest snapshot per version
       const map: Record<string, { overall_score: number; parameter_scores: Record<string, number> }> = {};
       for (const s of data ?? []) {
         if (!map[s.recipe_version_id]) map[s.recipe_version_id] = s;
@@ -84,7 +143,7 @@ export function Recipes() {
     enabled: versionIds.length > 0,
   });
 
-  /* ── Loading state ─────────────────────────────────────────────────────── */
+  /* ── Loading ───────────────────────────────────────────────────────────── */
   if (isLoading && rows.length === 0) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -102,31 +161,59 @@ export function Recipes() {
   return (
     <div>
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-5">
         <h1 className="text-2xl font-bold text-gray-900">Recipes</h1>
-        <p className="text-sm text-gray-500 mt-0.5">{total} approved recipe{total !== 1 ? 's' : ''}</p>
+        <p className="text-sm text-gray-500 mt-0.5">{total} recipe{total !== 1 ? 's' : ''}</p>
       </div>
 
-      {rows.length === 0 ? (
+      {/* Status filter tabs */}
+      <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+        <div className="flex gap-1 border-b border-gray-200 mb-5 min-w-max md:min-w-0">
+          {TABS.filter((t) => t.id === 'all' || t.count > 0).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setStatusFilter(t.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                statusFilter === t.id
+                  ? 'border-violet-600 text-violet-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                statusFilter === t.id ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {rows.length === 0 && !isLoading ? (
         <div className="card px-6 py-16 text-center">
           <div className="w-14 h-14 rounded-2xl bg-violet-50 flex items-center justify-center mx-auto mb-4">
             <svg className="w-7 h-7 text-violet-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
             </svg>
           </div>
-          <p className="text-gray-500 font-medium">No approved recipes yet</p>
-          <p className="text-gray-400 text-sm mt-1">Approved recipes will appear here.</p>
+          <p className="text-gray-500 font-medium">No recipes found</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {statusFilter === 'all' ? 'Recipes will appear here once created.' : `No ${statusFilter.replace(/_/g, ' ')} recipes.`}
+          </p>
         </div>
       ) : (
         <>
           <div className="table-wrap overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className="w-full min-w-[960px]">
               <thead>
                 <tr>
                   <th className="th text-left">Recipe</th>
                   <th className="th">Category</th>
                   <th className="th">Version</th>
-                  <th className="th">Approved On</th>
+                  <th className="th">Status</th>
+                  <th className="th">Date</th>
                   <th className="th">Nutrition Levels</th>
                   <th className="th">Score</th>
                   <th className="th w-20" />
@@ -134,12 +221,19 @@ export function Recipes() {
               </thead>
               <tbody>
                 {rows.map((v) => {
-                  const recipe     = Array.isArray(v.recipes) ? v.recipes[0] : v.recipes;
-                  const category   = Array.isArray(recipe?.categories) ? recipe.categories[0] : recipe?.categories;
-                  const categoryId = recipe?.category_id ?? '';
-                  const snapshot   = snapshots?.[v.id];
-                  const overall    = snapshot?.overall_score ?? null;
+                  const recipe      = Array.isArray(v.recipes) ? v.recipes[0] : v.recipes;
+                  const category    = Array.isArray(recipe?.categories) ? recipe.categories[0] : recipe?.categories;
+                  const categoryId  = recipe?.category_id ?? '';
+                  const snapshot    = snapshots?.[v.id];
+                  const overall     = snapshot?.overall_score ?? null;
                   const paramScores = snapshot?.parameter_scores ?? {};
+
+                  /* Show most relevant date based on status */
+                  const displayDate =
+                    v.status === 'approved'  ? v.approved_at  :
+                    v.status === 'submitted' ? v.submitted_at :
+                    v.status === 'changes_requested' ? v.submitted_at :
+                    null;
 
                   return (
                     <tr key={v.id} className="hover:bg-gray-50/50 transition-colors">
@@ -165,13 +259,20 @@ export function Recipes() {
                         <span className="badge bg-violet-50 text-violet-700">v{v.version_number}</span>
                       </td>
 
-                      {/* Approved On */}
-                      <td className="td text-sm text-gray-600 text-center">{fmtDate(v.approved_at)}</td>
+                      {/* Status */}
+                      <td className="td text-center">
+                        <RecipeStatusBadge status={v.status} />
+                      </td>
 
-                      {/* Nutrition Levels — one dot per active parameter */}
+                      {/* Date */}
+                      <td className="td text-sm text-gray-600 text-center">
+                        {fmtDate(displayDate)}
+                      </td>
+
+                      {/* Nutrition Levels */}
                       <td className="td">
                         {overall == null ? (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-gray-400 block text-center">—</span>
                         ) : (
                           <div className="flex flex-wrap items-center gap-1.5 justify-center">
                             {(parameters ?? []).map((p) => {
