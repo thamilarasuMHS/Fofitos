@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import type { NutritionParameter } from '@/types/database';
 
 type PageSize = 20 | 50 | 100;
 
@@ -10,10 +11,24 @@ function fmtDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function scoreClass(s: number): string {
+  if (s >= 80) return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200';
+  if (s >= 50) return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
+  return 'bg-rose-50 text-rose-700 ring-1 ring-rose-200';
+}
+
+function dotColor(s: number | undefined): string {
+  if (s == null) return 'bg-gray-200';
+  if (s >= 80) return 'bg-emerald-400';
+  if (s >= 50) return 'bg-amber-400';
+  return 'bg-rose-400';
+}
+
 export function Recipes() {
   const [page, setPage]         = useState(0);
   const [pageSize, setPageSize] = useState<PageSize>(20);
 
+  /* ── Approved recipe versions ─────────────────────────────────────────── */
   const { data, isLoading } = useQuery({
     queryKey: ['approved_recipes', page, pageSize],
     queryFn: async () => {
@@ -37,6 +52,39 @@ export function Recipes() {
   const total      = data?.total ?? 0;
   const totalPages = Math.ceil(total / pageSize);
 
+  /* ── Active nutrition parameters (for dot labels) ─────────────────────── */
+  const { data: parameters } = useQuery({
+    queryKey: ['nutrition_parameters'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('nutrition_parameters').select('*').eq('is_active', true).order('sort_order');
+      if (error) throw error;
+      return data as NutritionParameter[];
+    },
+  });
+
+  /* ── Score snapshots for current page ─────────────────────────────────── */
+  const versionIds = rows.map((r) => r.id);
+  const { data: snapshots } = useQuery({
+    queryKey: ['recipe_list_snapshots', versionIds],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('score_snapshots')
+        .select('recipe_version_id, overall_score, parameter_scores')
+        .in('recipe_version_id', versionIds)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      // keep only the latest snapshot per version
+      const map: Record<string, { overall_score: number; parameter_scores: Record<string, number> }> = {};
+      for (const s of data ?? []) {
+        if (!map[s.recipe_version_id]) map[s.recipe_version_id] = s;
+      }
+      return map;
+    },
+    enabled: versionIds.length > 0,
+  });
+
+  /* ── Loading state ─────────────────────────────────────────────────────── */
   if (isLoading && rows.length === 0) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -72,23 +120,30 @@ export function Recipes() {
       ) : (
         <>
           <div className="table-wrap overflow-x-auto">
-            <table className="w-full min-w-[700px]">
+            <table className="w-full min-w-[900px]">
               <thead>
                 <tr>
                   <th className="th text-left">Recipe</th>
                   <th className="th">Category</th>
                   <th className="th">Version</th>
                   <th className="th">Approved On</th>
+                  <th className="th">Nutrition Levels</th>
+                  <th className="th">Score</th>
                   <th className="th w-20" />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((v) => {
-                  const recipe   = Array.isArray(v.recipes) ? v.recipes[0] : v.recipes;
-                  const category = Array.isArray(recipe?.categories) ? recipe.categories[0] : recipe?.categories;
+                  const recipe     = Array.isArray(v.recipes) ? v.recipes[0] : v.recipes;
+                  const category   = Array.isArray(recipe?.categories) ? recipe.categories[0] : recipe?.categories;
                   const categoryId = recipe?.category_id ?? '';
+                  const snapshot   = snapshots?.[v.id];
+                  const overall    = snapshot?.overall_score ?? null;
+                  const paramScores = snapshot?.parameter_scores ?? {};
+
                   return (
                     <tr key={v.id} className="hover:bg-gray-50/50 transition-colors">
+                      {/* Recipe name */}
                       <td className="td">
                         <div className="flex items-center gap-2.5">
                           <span className="w-7 h-7 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
@@ -99,13 +154,52 @@ export function Recipes() {
                           <span className="font-medium text-gray-900">{recipe?.name ?? '—'}</span>
                         </div>
                       </td>
+
+                      {/* Category */}
                       <td className="td">
                         <span className="text-sm text-gray-600">{category?.name ?? '—'}</span>
                       </td>
+
+                      {/* Version */}
                       <td className="td text-center">
                         <span className="badge bg-violet-50 text-violet-700">v{v.version_number}</span>
                       </td>
+
+                      {/* Approved On */}
                       <td className="td text-sm text-gray-600 text-center">{fmtDate(v.approved_at)}</td>
+
+                      {/* Nutrition Levels — one dot per active parameter */}
+                      <td className="td">
+                        {overall == null ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1.5 justify-center">
+                            {(parameters ?? []).map((p) => {
+                              const s = paramScores[p.id];
+                              return (
+                                <span
+                                  key={p.id}
+                                  title={`${p.name}: ${s != null ? Math.round(s) + '/100' : '—'}`}
+                                  className={`w-3 h-3 rounded-full ${dotColor(s)} cursor-default`}
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Overall Score */}
+                      <td className="td text-center">
+                        {overall == null ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <span className={`inline-flex items-center justify-center text-xs font-semibold px-2 py-0.5 rounded-full ${scoreClass(overall)}`}>
+                            {Math.round(overall)}/100
+                          </span>
+                        )}
+                      </td>
+
+                      {/* View link */}
                       <td className="td text-right">
                         <Link
                           to={`/categories/${categoryId}/recipes/${v.recipe_id}`}
