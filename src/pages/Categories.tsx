@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { Category, Profile } from '@/types/database';
 
-const PAGE_SIZE = 10;
+type PageSize = 20 | 50 | 100;
 type StatusFilter = 'all' | 'approved' | 'pending_approval' | 'draft' | 'rejected';
 
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
@@ -42,6 +42,7 @@ export function Categories() {
   const queryClient = useQueryClient();
 
   const [page, setPage]                     = useState(0);
+  const [pageSize, setPageSize]             = useState<PageSize>(20);
   const [statusFilter, setStatusFilter]     = useState<StatusFilter>('all');
   const [search, setSearch]                 = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -128,13 +129,13 @@ export function Categories() {
 
   /* ── Paginated + filtered + searched data query ───────────────────────── */
   const { data, isLoading } = useQuery({
-    queryKey: ['categories', page, statusFilter, debouncedSearch, profile?.id, profile?.role],
+    queryKey: ['categories', page, pageSize, statusFilter, debouncedSearch, profile?.id, profile?.role],
     queryFn: async () => {
       let q = supabase
         .from('categories')
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (profile?.role === 'manager') {
         q = q.or(`created_by.eq.${profile.id},status.eq.approved`);
@@ -210,7 +211,7 @@ export function Categories() {
 
   const rows       = data?.rows ?? [];
   const total      = data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canCreate  = profile?.role === 'admin' || profile?.role === 'manager';
 
   const TABS: { id: StatusFilter; label: string; count: number }[] = [
@@ -464,12 +465,28 @@ export function Categories() {
           </div>
 
           {/* Pagination — always visible when there are rows */}
-          <div className="flex items-center justify-between mt-4 px-1">
-            <p className="text-sm text-gray-500">
-              {total === 0
-                ? 'No results'
-                : `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} of ${total}`}
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 px-1">
+            {/* Page-size selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Show</span>
+              {([20, 50, 100] as PageSize[]).map((n) => (
+                <button key={n} type="button"
+                  onClick={() => { setPageSize(n); setPage(0); }}
+                  className={`px-3 py-1 rounded-lg text-sm border transition-all ${
+                    pageSize === n
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}>{n}</button>
+              ))}
+              <span className="text-sm text-gray-500">per page</span>
+            </div>
+            {/* Page navigation */}
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-gray-500">
+                {total === 0
+                  ? 'No results'
+                  : `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total}`}
+              </p>
             <div className="flex items-center gap-1">
               {/* First page */}
               <button
@@ -534,6 +551,7 @@ export function Categories() {
               >
                 »
               </button>
+            </div>
             </div>
           </div>
         </>
