@@ -85,6 +85,7 @@ export interface RecipeVersion {
   submitted_at: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  reviewer_notes: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

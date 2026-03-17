@@ -48,6 +48,8 @@ export function RecipeDetail() {
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState<'ingredients' | 'nutrition' | 'scoring' | 'history' | 'compare'>('ingredients');
   const [versionId, setVersionId] = useState<string | null>(null);
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [pendingNotes, setPendingNotes]     = useState('');
 
   const { data: recipe } = useQuery({
     queryKey: ['recipe', recipeId],
@@ -266,18 +268,19 @@ export function RecipeDetail() {
     (profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'dietician');
   const canCreateVersion =
     (profile?.role === 'admin' || profile?.role === 'manager' || profile?.role === 'dietician') &&
-    currentVersion?.status === 'approved';
+    (currentVersion?.status === 'approved' || currentVersion?.status === 'changes_requested');
   const canDownloadPdf   = profile?.role === 'admin' || profile?.role === 'manager';
   const canApproveRecipe = (profile?.role === 'admin' || profile?.role === 'manager') && currentVersion?.status === 'submitted';
   const canRequestDeletion = profile?.role === 'manager' && recipe;
 
   const approveRecipe = useMutation({
-    mutationFn: async (approve: boolean) => {
+    mutationFn: async ({ approve, notes }: { approve: boolean; notes?: string }) => {
       if (!currentVersionId || !profile?.id) return;
       const { error } = await supabase.from('recipe_versions').update({
         status: approve ? 'approved' : 'changes_requested',
         approved_by: profile.id,
         approved_at: new Date().toISOString(),
+        ...(approve ? {} : { reviewer_notes: notes ?? null }),
       }).eq('id', currentVersionId);
       if (error) throw error;
       if (approve && totals && parameterScores && goals && parameters) {
@@ -297,7 +300,8 @@ export function RecipeDetail() {
       }
       await logActivity(approve ? 'recipe_approved' : 'recipe_changes_requested', 'recipe_version', currentVersionId, { recipe_id: recipeId });
     },
-    onSuccess: () => {
+    onSuccess: (_data, { approve }) => {
+      toast.success(approve ? 'Recipe approved.' : 'Changes requested.');
       queryClient.invalidateQueries({ queryKey: ['recipe_versions', recipeId] });
       queryClient.invalidateQueries({ queryKey: ['score_snapshots', currentVersionId] });
     },
@@ -365,10 +369,13 @@ export function RecipeDetail() {
         )}
         {canApproveRecipe && (
           <>
-            <button type="button" className="bg-green-600 text-white px-3 py-1 rounded text-sm" onClick={() => approveRecipe.mutate(true)}>
+            <button type="button" className="bg-green-600 text-white px-3 py-1 rounded text-sm"
+              disabled={approveRecipe.isPending}
+              onClick={() => approveRecipe.mutate({ approve: true })}>
               Approve recipe
             </button>
-            <button type="button" className="bg-amber-600 text-white px-3 py-1 rounded text-sm" onClick={() => approveRecipe.mutate(false)}>
+            <button type="button" className="bg-amber-600 text-white px-3 py-1 rounded text-sm"
+              onClick={() => { setPendingNotes(''); setNotesModalOpen(true); }}>
               Request changes
             </button>
           </>
@@ -427,6 +434,23 @@ export function RecipeDetail() {
           </button>
         ))}
       </div>
+
+      {/* ── Changes-requested feedback banner ───────────────────────────────── */}
+      {currentVersion?.status === 'changes_requested' && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mt-4 mb-1 flex gap-3">
+          <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-amber-800">Changes requested</p>
+            {currentVersion.reviewer_notes ? (
+              <p className="text-sm text-amber-700 mt-0.5">{currentVersion.reviewer_notes}</p>
+            ) : (
+              <p className="text-sm text-amber-600 mt-0.5 italic">No feedback notes provided.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Ingredients tab ─────────────────────────────────────────────────── */}
       {activeTab === 'ingredients' && (
@@ -948,6 +972,45 @@ export function RecipeDetail() {
           goals={goals ?? []}
           parameters={parameters ?? []}
         />
+      )}
+
+      {/* ── Request changes notes modal ── */}
+      {notesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+             onClick={() => setNotesModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+               onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Request Changes</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Describe what needs to be corrected. The author will see this note.
+            </p>
+            <textarea
+              className="w-full border border-gray-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-500"
+              rows={4}
+              placeholder="e.g. Sodium values appear too high — please recheck the sauce ingredient."
+              value={pendingNotes}
+              onChange={(e) => setPendingNotes(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button type="button" className="btn-secondary px-4 py-2 text-sm"
+                onClick={() => setNotesModalOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700 disabled:opacity-40 transition-colors"
+                disabled={approveRecipe.isPending}
+                onClick={() => {
+                  approveRecipe.mutate({ approve: false, notes: pendingNotes.trim() || undefined });
+                  setNotesModalOpen(false);
+                }}
+              >
+                Request Changes
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
