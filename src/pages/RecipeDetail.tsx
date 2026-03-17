@@ -456,7 +456,9 @@ export function RecipeDetail() {
       {activeTab === 'ingredients' && (
         <div className="mt-4">
           <div className="space-y-4">
-            {(components ?? []).map((comp) => (
+            {(components ?? [])
+              .filter((comp, idx, arr) => arr.findIndex((c) => c.name === comp.name) === idx)
+              .map((comp) => (
               <ComponentIngredientCard
                 key={comp.id}
                 component={comp}
