@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import type { NutritionParameter } from '@/types/database';
 
 type PageSize    = 20 | 50 | 100;
-type StatusFilter = 'all' | 'approved' | 'submitted' | 'draft' | 'changes_requested';
+type StatusFilter = 'all' | 'approved' | 'submitted' | 'changes_requested';
 
 /* ─── Helpers ──────────────────────────────────────────────────────────────── */
 function fmtDate(iso: string | null | undefined): string {
@@ -67,6 +67,7 @@ export function Recipes() {
           { count: 'exact' }
         )
         .filter('recipes.deleted_at', 'is', null)
+        .neq('status', 'draft')
         .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -90,7 +91,8 @@ export function Recipes() {
       const { data, error } = await supabase
         .from('recipe_versions')
         .select('status, recipes!inner ( deleted_at )')
-        .filter('recipes.deleted_at', 'is', null);
+        .filter('recipes.deleted_at', 'is', null)
+        .neq('status', 'draft');
       if (error) throw error;
       return (data ?? []) as { status: string }[];
     },
@@ -100,7 +102,6 @@ export function Recipes() {
     all:               statusRows?.length ?? 0,
     approved:          statusRows?.filter((r) => r.status === 'approved').length ?? 0,
     submitted:         statusRows?.filter((r) => r.status === 'submitted').length ?? 0,
-    draft:             statusRows?.filter((r) => r.status === 'draft').length ?? 0,
     changes_requested: statusRows?.filter((r) => r.status === 'changes_requested').length ?? 0,
   };
 
@@ -109,7 +110,6 @@ export function Recipes() {
     { id: 'approved',          label: 'Approved',         count: counts.approved          },
     { id: 'submitted',         label: 'Submitted',        count: counts.submitted         },
     { id: 'changes_requested', label: 'Changes Requested',count: counts.changes_requested },
-    { id: 'draft',             label: 'Draft',            count: counts.draft             },
   ];
 
   /* ── Active nutrition parameters (for dot labels) ─────────────────────── */
