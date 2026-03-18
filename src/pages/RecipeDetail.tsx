@@ -437,11 +437,11 @@ export function RecipeDetail() {
 
       {/* ── Changes-requested feedback banner ───────────────────────────────── */}
       {currentVersion?.status === 'changes_requested' && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mt-4 mb-1 flex gap-3">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 mt-4 mb-1 flex gap-3 items-start">
           <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
           </svg>
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-medium text-amber-800">Changes requested</p>
             {currentVersion.reviewer_notes ? (
               <p className="text-sm text-amber-700 mt-0.5">{currentVersion.reviewer_notes}</p>
@@ -449,6 +449,16 @@ export function RecipeDetail() {
               <p className="text-sm text-amber-600 mt-0.5 italic">No feedback notes provided.</p>
             )}
           </div>
+          {canCreateVersion && (
+            <button
+              type="button"
+              className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              disabled={createVersion.isPending}
+              onClick={() => createVersion.mutate()}
+            >
+              {createVersion.isPending ? 'Creating…' : 'Fix Issues →'}
+            </button>
+          )}
         </div>
       )}
 
