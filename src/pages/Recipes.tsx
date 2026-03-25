@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -55,55 +55,51 @@ export function Recipes() {
   /* Reset to page 0 when filter changes */
   useEffect(() => { setPage(0); }, [statusFilter]);
 
-  /* ── All recipe versions (excluding soft-deleted recipes) ─────────────── */
-  const { data, isLoading } = useQuery({
-    queryKey: ['all_recipe_versions', page, pageSize, statusFilter],
-    queryFn: async () => {
-      let q = supabase
-        .from('recipe_versions')
-        .select(
-          `id, recipe_id, version_number, status, submitted_at, approved_at,
-           recipes!inner ( name, category_id, deleted_at, categories ( name ) )`,
-          { count: 'exact' }
-        )
-        .filter('recipes.deleted_at', 'is', null)
-        .neq('status', 'draft')
-        .order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-
-      if (statusFilter !== 'all') q = q.eq('status', statusFilter);
-
-      const { data: rows, error, count } = await q;
-      if (error) throw error;
-      return { rows: rows ?? [], total: count ?? 0 };
-    },
-    placeholderData: (prev) => prev,
-  });
-
-  const rows       = data?.rows ?? [];
-  const total      = data?.total ?? 0;
-  const totalPages = Math.ceil(total / pageSize);
-
-  /* ── Status counts (for tab badges) ───────────────────────────────────── */
-  const { data: statusRows } = useQuery({
-    queryKey: ['all_recipe_versions_statuses'],
+  /* ── Fetch all non-draft versions once; deduplicate client-side ────────── */
+  const { data: allVersions, isLoading } = useQuery({
+    queryKey: ['all_recipe_versions_dedup'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recipe_versions')
-        .select('status, recipes!inner ( deleted_at )')
+        .select(
+          `id, recipe_id, version_number, status, submitted_at, approved_at, created_at,
+           recipes!inner ( name, category_id, deleted_at, categories ( name ) )`
+        )
         .filter('recipes.deleted_at', 'is', null)
-        .neq('status', 'draft');
+        .neq('status', 'draft')
+        .order('version_number', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as { status: string }[];
+      return data ?? [];
     },
   });
 
-  const counts = {
-    all:               statusRows?.length ?? 0,
-    approved:          statusRows?.filter((r) => r.status === 'approved').length ?? 0,
-    submitted:         statusRows?.filter((r) => r.status === 'submitted').length ?? 0,
-    changes_requested: statusRows?.filter((r) => r.status === 'changes_requested').length ?? 0,
-  };
+  /* Keep only the highest version_number per recipe */
+  const uniqueLatest = useMemo(() => {
+    if (!allVersions) return [];
+    const seen = new Set<string>();
+    return allVersions.filter((v) => {
+      if (seen.has(v.recipe_id)) return false;
+      seen.add(v.recipe_id);
+      return true;
+    });
+  }, [allVersions]);
+
+  /* Status counts derived from deduplicated list */
+  const counts = useMemo(() => ({
+    all:               uniqueLatest.length,
+    approved:          uniqueLatest.filter((r) => r.status === 'approved').length,
+    submitted:         uniqueLatest.filter((r) => r.status === 'submitted').length,
+    changes_requested: uniqueLatest.filter((r) => r.status === 'changes_requested').length,
+  }), [uniqueLatest]);
+
+  /* Apply status filter + paginate client-side */
+  const filtered   = useMemo(() =>
+    statusFilter === 'all' ? uniqueLatest : uniqueLatest.filter((v) => v.status === statusFilter),
+    [uniqueLatest, statusFilter]
+  );
+  const total      = filtered.length;
+  const totalPages = Math.ceil(total / pageSize);
+  const rows       = filtered.slice(page * pageSize, (page + 1) * pageSize);
 
   const TABS: { id: StatusFilter; label: string; count: number }[] = [
     { id: 'all',               label: 'All',              count: counts.all               },
