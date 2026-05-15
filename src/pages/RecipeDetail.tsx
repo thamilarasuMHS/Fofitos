@@ -832,7 +832,7 @@ export function RecipeDetail() {
           )}
 
           {scoreSnapshots?.map((s) => {
-            const overall   = s.overall_score;
+            const overall   = Number(s.overall_score);
             /* ── colour helpers based on score ── */
             const scoreAccent = overall >= 90 ? 'bg-emerald-400'
                               : overall >= 70 ? 'bg-amber-400'
