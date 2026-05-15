@@ -8,7 +8,10 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 const JWT_SECRET = process.env.JWT_SECRET || 'fofitos-jwt-secret-2026';
 
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
+app.use(cors({
+  origin: ['http://localhost:3000', /\.vercel\.app$/],
+  credentials: true,
+}));
 app.use(express.json());
 
 // ── JWT middleware ────────────────────────────────────────────
@@ -411,6 +414,11 @@ app.post('/api/rpc/:fn', requireAuth, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Fofitos API server running on http://localhost:${PORT}`);
-});
+// Start standalone server only when run directly (not imported by Vercel)
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`Fofitos API server running on http://localhost:${PORT}`);
+  });
+}
+
+export { app };
